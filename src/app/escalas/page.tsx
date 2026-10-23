@@ -60,8 +60,8 @@ export default function EscalasPage() {
 
   // Escala ativa
   const [escalaId, setEscalaId] = useState<EscalaTipo>("CONTRAMESTRE");
-  // Modo de visualização
-  const [modoViz, setModoViz] = useState<ModoViz>("lista");
+  // Modo de visualização (Padrão SOMOR como padrão operacional)
+  const [modoViz, setModoViz] = useState<ModoViz>("somor");
   // Período de visualização (modo lista): janela de 14 ou 30 dias
   const [inicioPeriodo, setInicioPeriodo] = useState<ISODate>(hoje);
   const [diasJanela, setDiasJanela] = useState<number>(14);
@@ -178,6 +178,16 @@ export default function EscalasPage() {
       {/* Seletor de Modo de Visualização */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
+          onClick={() => setModoViz("somor")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition border ${
+            modoViz === "somor"
+              ? "bg-fuchsia-500/20 border-fuchsia-500/50 text-fuchsia-300 shadow-md shadow-fuchsia-950/30"
+              : "bg-navy-900 border-slate-800 text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <TableProperties className="w-3.5 h-3.5" /> Grade Mensal (Padrão SOMOR)
+        </button>
+        <button
           onClick={() => setModoViz("lista")}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition border ${
             modoViz === "lista"
@@ -186,16 +196,6 @@ export default function EscalasPage() {
           }`}
         >
           <Layers className="w-3.5 h-3.5" /> Previsão Diária
-        </button>
-        <button
-          onClick={() => setModoViz("somor")}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition border ${
-            modoViz === "somor"
-              ? "bg-fuchsia-500/20 border-fuchsia-500/50 text-fuchsia-300"
-              : "bg-navy-900 border-slate-800 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <TableProperties className="w-3.5 h-3.5" /> Grade Mensal (Padrão SOMOR)
         </button>
       </div>
 
@@ -510,7 +510,7 @@ export default function EscalasPage() {
             {/* Navegação de mês */}
             <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => navigarMesSOMOR(-1)}
+                onClick={() => navegarMesSOMOR(-1)}
                 className="p-2 rounded-xl bg-navy-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition"
               >
                 <ChevronLeft className="w-4 h-4" />
