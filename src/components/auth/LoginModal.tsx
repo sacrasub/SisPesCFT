@@ -28,6 +28,8 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [verSenha, setVerSenha] = useState(false);
+  const [verNovaSenha, setVerNovaSenha] = useState(false);
+  const [verConfirmaSenha, setVerConfirmaSenha] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [carregandoGoogle, setCarregandoGoogle] = useState(false);
   const [erro, setErro] = useState("");
@@ -174,28 +176,69 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
                 <label className="block text-xs font-bold text-slate-300 mb-1">
                   Nova Senha Pessoal (mínimo 6 caracteres):
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={novaSenha}
-                  onChange={(e) => setNovaSenha(e.target.value)}
-                  placeholder="Digite sua nova senha"
-                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-sky-400 transition"
-                />
+                <div className="relative">
+                  <input
+                    type={verNovaSenha ? "text" : "password"}
+                    required
+                    value={novaSenha}
+                    onChange={(e) => setNovaSenha(e.target.value)}
+                    placeholder="Digite sua nova senha"
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVerNovaSenha(!verNovaSenha)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 transition"
+                    title={verNovaSenha ? "Ocultar Senha" : "Exibir Senha"}
+                  >
+                    {verNovaSenha ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
                   Confirme a Nova Senha:
                 </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmaNovaSenha}
-                  onChange={(e) => setConfirmaNovaSenha(e.target.value)}
-                  placeholder="Repita a nova senha"
-                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 outline-none focus:border-sky-400 transition"
-                />
+                <div className="relative">
+                  <input
+                    type={verConfirmaSenha ? "text" : "password"}
+                    required
+                    value={confirmaNovaSenha}
+                    onChange={(e) => setConfirmaNovaSenha(e.target.value)}
+                    placeholder="Repita a nova senha"
+                    className="w-full pl-3.5 pr-10 py-2.5 bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setVerConfirmaSenha(!verConfirmaSenha)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 transition"
+                    title={verConfirmaSenha ? "Ocultar Senha" : "Exibir Senha"}
+                  >
+                    {verConfirmaSenha ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModoTrocaSenha(false);
+                    setErro("");
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-200 transition"
+                >
+                  ← Voltar ao login
+                </button>
               </div>
 
               <button
