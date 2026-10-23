@@ -3,8 +3,10 @@ import { signInWithPopup } from "firebase/auth";
 import {
   collection,
   doc,
+  getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import type { Usuario, Perfil, DivisaoId, Posto } from "@/lib/types";
@@ -21,7 +23,7 @@ export interface UsuarioCftAuth {
   email_funcional?: string;
   email_pessoal?: string;
   nome: string;
-  role: "super_admin" | "admin" | "operador";
+  role: "super_admin" | "admin" | "operador" | "visualizador";
   ativo: boolean;
   tipo?: "institucional" | "google";
   cargo?: string;
@@ -438,6 +440,213 @@ export const GAP_DEFAULT_WHITELIST: UsuarioCftAuth[] = [
     "ativo": true,
     "tipo": "google",
     "cargo": "MN - Tripulação CFT"
+  },
+  {
+    "email": "eduardo.held@marinha.mil.br",
+    "email_funcional": "eduardo.held@marinha.mil.br",
+    "nome": "CF HELD - Eduardo Guimarães de Held",
+    "role": "admin",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CF - Tripulação CFT (COMANDO)"
+  },
+  {
+    "email": "edson.santos@marinha.mil.br",
+    "email_funcional": "edson.santos@marinha.mil.br",
+    "nome": "SO ROGERIO - Edson Rogerio Rosa Ribeiro dos Santos",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "SO - Tripulação CFT (STA)"
+  },
+  {
+    "email": "humberto.serra@marinha.mil.br",
+    "email_funcional": "humberto.serra@marinha.mil.br",
+    "nome": "SO MARINO - Humberto Marino dos Santos Serra",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "SO - Tripulação CFT (STA)"
+  },
+  {
+    "email": "edvaldo.souza@marinha.mil.br",
+    "email_funcional": "edvaldo.souza@marinha.mil.br",
+    "nome": "SO EDVALDO - Edvaldo Vicente de Souza",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "SO - Tripulação CFT (STA)"
+  },
+  {
+    "email": "bruno.rubem@marinha.mil.br",
+    "email_funcional": "bruno.rubem@marinha.mil.br",
+    "nome": "1SG RUBEM - Bruno Rodrigues Rubem",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "1SG - Tripulação CFT (STA)"
+  },
+  {
+    "email": "tiago.faria@marinha.mil.br",
+    "email_funcional": "tiago.faria@marinha.mil.br",
+    "nome": "1SG TIAGO - Tiago Gonçalves Faria",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "1SG - Tripulação CFT (STA)"
+  },
+  {
+    "email": "nilton.junior@marinha.mil.br",
+    "email_funcional": "nilton.junior@marinha.mil.br",
+    "nome": "2SG NILTON - Nilton da Silva Carvalho Junior",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "2SG - Tripulação CFT (STA)"
+  },
+  {
+    "email": "emilson.geraldo@marinha.mil.br",
+    "email_funcional": "emilson.geraldo@marinha.mil.br",
+    "nome": "3SG GERALDO - Emilson Pontes Geraldo",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "jose.cousaquiviti@marinha.mil.br",
+    "email_funcional": "jose.cousaquiviti@marinha.mil.br",
+    "nome": "3SG COUSAQUIVITI - José Vinícius Ramos Fernandes Cousaquiviti",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "joao.paz@marinha.mil.br",
+    "email_funcional": "joao.paz@marinha.mil.br",
+    "nome": "3SG CLEBER - João Cleber da Silva Paz",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "inacio.guimaraes@marinha.mil.br",
+    "email_funcional": "inacio.guimaraes@marinha.mil.br",
+    "nome": "3SG INÁCIO - Inácio Carvalho Guimarães",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "joao.ramos@marinha.mil.br",
+    "email_funcional": "joao.ramos@marinha.mil.br",
+    "nome": "3SG JOÃO MARCOS - João Marcos Farias Ramos",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "bruno.jesus@marinha.mil.br",
+    "email_funcional": "bruno.jesus@marinha.mil.br",
+    "nome": "3SG BRUNO MARTINS - Bruno Martins Souza de Jesus",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "3SG - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "cilas.santos@marinha.mil.br",
+    "email_funcional": "cilas.santos@marinha.mil.br",
+    "nome": "CB CILAS - Cilas de Oliveira Santos",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (MOTORISTAS)"
+  },
+  {
+    "email": "iuri.mello@marinha.mil.br",
+    "email_funcional": "iuri.mello@marinha.mil.br",
+    "nome": "CB IURI - Iuri Henrique de Mello",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (MOTORISTAS)"
+  },
+  {
+    "email": "gustavo.peres@marinha.mil.br",
+    "email_funcional": "gustavo.peres@marinha.mil.br",
+    "nome": "CB WELLINGTON - Gustavo Wellington de Jesus Peres",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (MOTORISTAS)"
+  },
+  {
+    "email": "emanoel.moreira@marinha.mil.br",
+    "email_funcional": "emanoel.moreira@marinha.mil.br",
+    "nome": "CB EMANOEL - Emanoel Ferreira Moreira",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (MOTORISTAS)"
+  },
+  {
+    "email": "joao.souza@marinha.mil.br",
+    "email_funcional": "joao.souza@marinha.mil.br",
+    "nome": "CB BORDUAN - João Luiz Borduan de Souza",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "italo.mendes@marinha.mil.br",
+    "email_funcional": "italo.mendes@marinha.mil.br",
+    "nome": "CB ÍTALO - Ítalo Gabriel Silva Mendes",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "alexandre.elias@marinha.mil.br",
+    "email_funcional": "alexandre.elias@marinha.mil.br",
+    "nome": "CB ELIAS - Alexandre de Oliveira Elias",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "CB - Tripulação CFT (CONTRAMESTRES)"
+  },
+  {
+    "email": "triangulotatico@gmail.com",
+    "email_pessoal": "triangulotatico@gmail.com",
+    "nome": "EQUIPE TRIÂNGULO TÁTICO CFT",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "google",
+    "cargo": "Operador de Campo / Insp. Naval"
+  },
+  {
+    "email": "comsoc.cft@marinha.mil.br",
+    "email_funcional": "comsoc.cft@marinha.mil.br",
+    "nome": "COMUNICAÇÃO SOCIAL CFT",
+    "role": "operador",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "ComSoc - Divisão Pessoal"
+  },
+  {
+    "email": "epm.cft@marinha.mil.br",
+    "email_funcional": "epm.cft@marinha.mil.br",
+    "nome": "ENSINO PROFISSIONAL MARÍTIMO",
+    "role": "admin",
+    "ativo": true,
+    "tipo": "institucional",
+    "cargo": "Divisão de Ensino (Div 10)"
   }
 ];
 
@@ -445,241 +654,260 @@ export const GAP_MILITARES_MAP: Record<string, MilitarMapItem> = {
   "daniel.costa@marinha.mil.br": {
     "nip": "87.0691.99",
     "posto_grad": "CC",
-    "especialidade": "AA",
-    "nome_completo": "DANIEL COSTA DE SOUZA",
+    "especialidade": "CFT",
+    "nome_completo": "Daniel Costa de Souza",
     "nome_guerra": "DANIEL COSTA",
-    "rotulo": "CC (AA) DANIEL COSTA",
+    "rotulo": "CC DANIEL COSTA",
     "email_funcional": "daniel.costa@marinha.mil.br",
     "email_pessoal": "danielcosta@hotmail.com"
   },
   "danielcosta@hotmail.com": {
     "nip": "87.0691.99",
     "posto_grad": "CC",
-    "especialidade": "AA",
-    "nome_completo": "DANIEL COSTA DE SOUZA",
+    "especialidade": "CFT",
+    "nome_completo": "Daniel Costa de Souza",
     "nome_guerra": "DANIEL COSTA",
-    "rotulo": "CC (AA) DANIEL COSTA",
+    "rotulo": "CC DANIEL COSTA",
     "email_funcional": "daniel.costa@marinha.mil.br",
     "email_pessoal": "danielcosta@hotmail.com"
   },
   "matheus.bispo@marinha.mil.br": {
-    "nip": "10.0235.51",
-    "posto_grad": "CT",
-    "especialidade": "IM",
-    "nome_completo": "MATHEUS BISPO PIRES DA SILVA",
-    "nome_guerra": "BISPO",
-    "rotulo": "CT (IM) BISPO",
+    "nip": "14.0124.64",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Matheus Alves de Oliveira",
+    "nome_guerra": "MATHEUS",
+    "rotulo": "3SG MATHEUS",
     "email_funcional": "matheus.bispo@marinha.mil.br",
     "email_pessoal": "m.bisporj@gmail.com"
   },
   "m.bisporj@gmail.com": {
-    "nip": "10.0235.51",
-    "posto_grad": "CT",
-    "especialidade": "IM",
-    "nome_completo": "MATHEUS BISPO PIRES DA SILVA",
-    "nome_guerra": "BISPO",
-    "rotulo": "CT (IM) BISPO",
+    "nip": "14.0124.64",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Matheus Alves de Oliveira",
+    "nome_guerra": "MATHEUS",
+    "rotulo": "3SG MATHEUS",
     "email_funcional": "matheus.bispo@marinha.mil.br",
     "email_pessoal": "m.bisporj@gmail.com"
   },
   "kelly.veras@marinha.mil.br": {
     "nip": "21.3201.28",
-    "posto_grad": "1ºTen",
-    "especialidade": "RM2-T",
-    "nome_completo": "KELLY RODRIGUES VÉRAS",
+    "posto_grad": "1T",
+    "especialidade": "CFT",
+    "nome_completo": "Kelly Rodrigues Véras",
     "nome_guerra": "VÉRAS",
-    "rotulo": "1ºTen (RM2-T) VÉRAS",
+    "rotulo": "1T VÉRAS",
     "email_funcional": "kelly.veras@marinha.mil.br"
   },
   "camila.cravero@marinha.mil.br": {
     "nip": "21.3218.25",
-    "posto_grad": "1ºTen",
-    "especialidade": "RM2-T",
-    "nome_completo": "CAMILA CRAVERO DA SILVA",
+    "posto_grad": "1T",
+    "especialidade": "CFT",
+    "nome_completo": "Camila Cravero da Silva",
     "nome_guerra": "CRAVERO",
-    "rotulo": "1ºTen (RM2-T) CRAVERO",
+    "rotulo": "1T CRAVERO",
     "email_funcional": "camila.cravero@marinha.mil.br",
     "email_pessoal": "camilacravero.silva@gmail.com"
   },
   "camilacravero.silva@gmail.com": {
     "nip": "21.3218.25",
-    "posto_grad": "1ºTen",
-    "especialidade": "RM2-T",
-    "nome_completo": "CAMILA CRAVERO DA SILVA",
+    "posto_grad": "1T",
+    "especialidade": "CFT",
+    "nome_completo": "Camila Cravero da Silva",
     "nome_guerra": "CRAVERO",
-    "rotulo": "1ºTen (RM2-T) CRAVERO",
+    "rotulo": "1T CRAVERO",
     "email_funcional": "camila.cravero@marinha.mil.br",
     "email_pessoal": "camilacravero.silva@gmail.com"
   },
   "balieiro.costa@marinha.mil.br": {
     "nip": "25.0313.25",
-    "posto_grad": "1ºTen",
-    "especialidade": "RM2-Md",
-    "nome_completo": "LUIZ HENRIQUE COSTA BALIEIRO",
+    "posto_grad": "1T",
+    "especialidade": "CFT",
+    "nome_completo": "Luiz Henrique Costa Balieiro",
     "nome_guerra": "BALIEIRO",
-    "rotulo": "1ºTen (RM2-Md) BALIEIRO",
+    "rotulo": "1T BALIEIRO",
     "email_funcional": "balieiro.costa@marinha.mil.br"
   },
   "azevedo.leonardo@marinha.mil.br": {
-    "nip": "03.0294.33",
-    "posto_grad": "2ºTen",
-    "especialidade": "AA",
-    "nome_completo": "LEONARDO BARBOSA AZEVEDO",
-    "nome_guerra": "AZEVEDO",
-    "rotulo": "2ºTen (AA) AZEVEDO",
+    "nip": "14.0052.71",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Dimas Barbosa",
+    "nome_guerra": "BARBOSA",
+    "rotulo": "3SG BARBOSA",
     "email_funcional": "azevedo.leonardo@marinha.mil.br",
     "email_pessoal": "leoccs@bol.com.br"
   },
   "leoccs@bol.com.br": {
-    "nip": "03.0294.33",
-    "posto_grad": "2ºTen",
-    "especialidade": "AA",
-    "nome_completo": "LEONARDO BARBOSA AZEVEDO",
-    "nome_guerra": "AZEVEDO",
-    "rotulo": "2ºTen (AA) AZEVEDO",
+    "nip": "14.0052.71",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Dimas Barbosa",
+    "nome_guerra": "BARBOSA",
+    "rotulo": "3SG BARBOSA",
     "email_funcional": "azevedo.leonardo@marinha.mil.br",
     "email_pessoal": "leoccs@bol.com.br"
   },
   "cristiano.sacramento@marinha.mil.br": {
     "nip": "97.1057.91",
     "posto_grad": "SO",
-    "especialidade": "CI-SB",
-    "nome_completo": "CRISTIANO DO SACRAMENTO SOARES",
+    "especialidade": "CFT",
+    "nome_completo": "Cristiano do Sacramento Soares",
     "nome_guerra": "SACRAMENTO",
-    "rotulo": "SO (CI-SB) SACRAMENTO",
+    "rotulo": "SO SACRAMENTO",
     "email_funcional": "cristiano.sacramento@marinha.mil.br",
     "email_pessoal": "sacrasub@gmail.com"
   },
   "sacrasub@gmail.com": {
     "nip": "97.1057.91",
     "posto_grad": "SO",
-    "especialidade": "CI-SB",
-    "nome_completo": "CRISTIANO DO SACRAMENTO SOARES",
+    "especialidade": "CFT",
+    "nome_completo": "Cristiano do Sacramento Soares",
     "nome_guerra": "SACRAMENTO",
-    "rotulo": "SO (CI-SB) SACRAMENTO",
+    "rotulo": "SO SACRAMENTO",
     "email_funcional": "cristiano.sacramento@marinha.mil.br",
     "email_pessoal": "sacrasub@gmail.com"
   },
   "wevertonluiz@hotmail.com": {
-    "nip": "99.2056.53",
-    "posto_grad": "SO",
-    "especialidade": "MO",
-    "nome_completo": "WEVERTON LUIZ FRANÇA",
-    "nome_guerra": "FRANÇA",
-    "rotulo": "SO (MO) FRANÇA",
+    "nip": "15.0313.57",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Everton Perez Mattos Ferreira",
+    "nome_guerra": "EVERTON",
+    "rotulo": "3SG EVERTON",
+    "email_funcional": "wevertonluiz@hotmail.com",
     "email_pessoal": "wevertonluiz@hotmail.com"
   },
   "rogerio.junior@marinha.mil.br": {
     "nip": "01.0369.55",
     "posto_grad": "SO",
-    "especialidade": "ET-SB",
-    "nome_completo": "ROGÉRIO CORREIA DE OLIVEIRA JÚNIOR",
-    "nome_guerra": "JÚNIOR",
-    "rotulo": "SO (ET-SB) JÚNIOR",
+    "especialidade": "CFT",
+    "nome_completo": "Rogério Correia de Oliveira Júnior",
+    "nome_guerra": "ROGÉRIO",
+    "rotulo": "SO ROGÉRIO",
     "email_funcional": "rogerio.junior@marinha.mil.br",
     "email_pessoal": "rogrioj@gmail.com"
   },
   "rogrioj@gmail.com": {
     "nip": "01.0369.55",
     "posto_grad": "SO",
-    "especialidade": "ET-SB",
-    "nome_completo": "ROGÉRIO CORREIA DE OLIVEIRA JÚNIOR",
-    "nome_guerra": "JÚNIOR",
-    "rotulo": "SO (ET-SB) JÚNIOR",
+    "especialidade": "CFT",
+    "nome_completo": "Rogério Correia de Oliveira Júnior",
+    "nome_guerra": "ROGÉRIO",
+    "rotulo": "SO ROGÉRIO",
     "email_funcional": "rogerio.junior@marinha.mil.br",
     "email_pessoal": "rogrioj@gmail.com"
   },
   "miguel.nepo.angelo@gmail.com": {
-    "nip": "06.0301.06",
-    "posto_grad": "1ºSG",
-    "especialidade": "MT",
-    "nome_completo": "MIGUEL ANGELO NEPOMUCENO DE LIMA",
-    "nome_guerra": "NEPOMUCENO",
-    "rotulo": "1ºSG (MT) NEPOMUCENO"
+    "nip": "25.4248.23",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Thaina Lima Gomes",
+    "nome_guerra": "LIMA",
+    "rotulo": "CB LIMA",
+    "email_funcional": "miguel.nepo.angelo@gmail.com",
+    "email_pessoal": "miguel.nepo.angelo@gmail.com"
   },
   "franciscotomazvieiraangelo1@gmail.com": {
     "nip": "08.0184.81",
-    "posto_grad": "2ºSG",
-    "especialidade": "ET",
-    "nome_completo": "FRANCISCO TOMÁZ VIEIRA ANGELO",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Francisco Tomáz Vieira Angelo",
     "nome_guerra": "TOMÁZ",
-    "rotulo": "2ºSG (ET) TOMÁZ"
+    "rotulo": "2SG TOMÁZ",
+    "email_funcional": "franciscotomazvieiraangelo1@gmail.com",
+    "email_pessoal": "franciscotomazvieiraangelo1@gmail.com"
   },
   "azevedo@live.it": {
     "nip": "09.0075.71",
-    "posto_grad": "2ºSG",
-    "especialidade": "BA",
-    "nome_completo": "FERNANDO PARANHOS AZEVEDO",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Fernando Paranhos Azevedo",
     "nome_guerra": "PARANHOS",
-    "rotulo": "2ºSG (BA) PARANHOS"
+    "rotulo": "2SG PARANHOS",
+    "email_funcional": "azevedo@live.it",
+    "email_pessoal": "azevedo@live.it"
   },
   "newrgs@hotmail.com": {
     "nip": "09.0214.42",
-    "posto_grad": "2ºSG",
-    "especialidade": "AM",
-    "nome_completo": "RAMON GUIMARÃES SOUZA",
-    "nome_guerra": "GUIMARÃES",
-    "rotulo": "2ºSG (AM) GUIMARÃES"
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Ramon Guimarães Souza",
+    "nome_guerra": "RAMON",
+    "rotulo": "2SG RAMON",
+    "email_funcional": "newrgs@hotmail.com",
+    "email_pessoal": "newrgs@hotmail.com"
   },
   "maicon.aparecido@marinha.mil.br": {
     "nip": "10.0164.73",
-    "posto_grad": "2ºSG",
-    "especialidade": "PL",
-    "nome_completo": "MAICON APARECIDO GOMES DA COSTA",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Maicon Aparecido Gomes da Costa",
     "nome_guerra": "MAICON",
-    "rotulo": "2ºSG (PL) MAICON",
+    "rotulo": "2SG MAICON",
     "email_funcional": "maicon.aparecido@marinha.mil.br",
     "email_pessoal": "maiickgomes@hotmail.com"
   },
   "maiickgomes@hotmail.com": {
     "nip": "10.0164.73",
-    "posto_grad": "2ºSG",
-    "especialidade": "PL",
-    "nome_completo": "MAICON APARECIDO GOMES DA COSTA",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Maicon Aparecido Gomes da Costa",
     "nome_guerra": "MAICON",
-    "rotulo": "2ºSG (PL) MAICON",
+    "rotulo": "2SG MAICON",
     "email_funcional": "maicon.aparecido@marinha.mil.br",
     "email_pessoal": "maiickgomes@hotmail.com"
   },
   "rodrigoccosta22@gmail.com": {
     "nip": "11.0261.62",
-    "posto_grad": "2ºSG",
-    "especialidade": "ET",
-    "nome_completo": "RODRIGO CORRÊA DA COSTA",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Rodrigo Corrêa da Costa",
     "nome_guerra": "RODRIGO",
-    "rotulo": "2ºSG (ET) RODRIGO"
+    "rotulo": "2SG RODRIGO",
+    "email_funcional": "rodrigoccosta22@gmail.com",
+    "email_pessoal": "rodrigoccosta22@gmail.com"
   },
   "azolamauro@gmail.com": {
     "nip": "11.0354.12",
-    "posto_grad": "2ºSG",
-    "especialidade": "AR",
-    "nome_completo": "MAURO AZOLA ULTRAMAR",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Mauro Azola Ultramar",
     "nome_guerra": "AZOLA",
-    "rotulo": "2ºSG (AR) AZOLA"
+    "rotulo": "2SG AZOLA",
+    "email_funcional": "azolamauro@gmail.com",
+    "email_pessoal": "azolamauro@gmail.com"
   },
   "messias4106@gmail.com": {
     "nip": "87.3815.67",
-    "posto_grad": "3ºSG",
-    "especialidade": "MR",
-    "nome_completo": "LUIZ JONAS MESSIAS JÚNIOR",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Luiz Jonas Messias Júnior",
     "nome_guerra": "JONAS",
-    "rotulo": "3ºSG (MR) JONAS"
+    "rotulo": "3SG JONAS",
+    "email_funcional": "messias4106@gmail.com",
+    "email_pessoal": "messias4106@gmail.com"
   },
   "nisototal90@hotmail.com": {
     "nip": "11.0691.55",
-    "posto_grad": "3ºSG",
-    "especialidade": "EL",
-    "nome_completo": "REINILSON DO NASCIMENTO OLIVEIRA",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Reinilson do Nascimento Oliveira",
     "nome_guerra": "REINILSON",
-    "rotulo": "3ºSG (EL) REINILSON"
+    "rotulo": "3SG REINILSON",
+    "email_funcional": "nisototal90@hotmail.com",
+    "email_pessoal": "nisototal90@hotmail.com"
   },
   "carlosheitorch13@gmail.com": {
-    "nip": "13.0121.18",
-    "posto_grad": "3ºSG",
-    "especialidade": "DT",
-    "nome_completo": "CARLOS HENRIQUE LIMA DO DESTERRO",
-    "nome_guerra": "DESTERRO",
-    "rotulo": "3ºSG (DT) DESTERRO"
+    "nip": "22.1804.27",
+    "posto_grad": "MN",
+    "especialidade": "CFT",
+    "nome_completo": "Carlos Henrique Rodrigues Costa",
+    "nome_guerra": "CARLOS",
+    "rotulo": "MN CARLOS",
+    "email_funcional": "carlosheitorch13@gmail.com",
+    "email_pessoal": "carlosheitorch13@gmail.com"
   },
   "dbarbosamb@gmail.com": {
     "nip": "14.0052.71",
@@ -691,103 +919,113 @@ export const GAP_MILITARES_MAP: Record<string, MilitarMapItem> = {
   },
   "welderuchoa94@gmail.com": {
     "nip": "14.0170.67",
-    "posto_grad": "3ºSG",
-    "especialidade": "EL",
-    "nome_completo": "WELDER UCHOA SILVA GOMES",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Welder Uchoa Silva Gomes",
     "nome_guerra": "UCHÔA",
-    "rotulo": "3ºSG (EL) UCHÔA"
+    "rotulo": "3SG UCHÔA",
+    "email_funcional": "welderuchoa94@gmail.com",
+    "email_pessoal": "welderuchoa94@gmail.com"
   },
   "teixeira.rodrigo@marinha.mil.br": {
     "nip": "15.0193.73",
-    "posto_grad": "3ºSG",
-    "especialidade": "ET",
-    "nome_completo": "RODRIGO PINTO DA SILVA TEIXEIRA",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Rodrigo Pinto da Silva Teixeira",
     "nome_guerra": "TEIXEIRA",
-    "rotulo": "3ºSG (ET) TEIXEIRA",
+    "rotulo": "3SG TEIXEIRA",
     "email_funcional": "teixeira.rodrigo@marinha.mil.br",
     "email_pessoal": "rodrigo.rpst@hotmail.com"
   },
   "rodrigo.rpst@hotmail.com": {
     "nip": "15.0193.73",
-    "posto_grad": "3ºSG",
-    "especialidade": "ET",
-    "nome_completo": "RODRIGO PINTO DA SILVA TEIXEIRA",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Rodrigo Pinto da Silva Teixeira",
     "nome_guerra": "TEIXEIRA",
-    "rotulo": "3ºSG (ET) TEIXEIRA",
+    "rotulo": "3SG TEIXEIRA",
     "email_funcional": "teixeira.rodrigo@marinha.mil.br",
     "email_pessoal": "rodrigo.rpst@hotmail.com"
   },
   "thomazbarroso@gmail.com": {
     "nip": "15.0308.57",
-    "posto_grad": "3ºSG",
-    "especialidade": "MA",
-    "nome_completo": "JOSÉ THOMÁZ FEIO BARROSO",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "José Thomáz Feio Barroso",
     "nome_guerra": "THOMÁZ",
-    "rotulo": "3ºSG (MA) THOMÁZ"
+    "rotulo": "3SG THOMÁZ",
+    "email_funcional": "thomazbarroso@gmail.com",
+    "email_pessoal": "thomazbarroso@gmail.com"
   },
   "robson.santos@marinha.mil.br": {
     "nip": "15.0197.99",
-    "posto_grad": "3ºSG",
-    "especialidade": "MC",
-    "nome_completo": "ROBSON SANTOS DA SILVA",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Robson Santos da Silva",
     "nome_guerra": "ROBSON",
-    "rotulo": "3ºSG (MC) ROBSON",
+    "rotulo": "3SG ROBSON",
     "email_funcional": "robson.santos@marinha.mil.br",
     "email_pessoal": "robson.gds.27@gmail.com"
   },
   "robson.gds.27@gmail.com": {
     "nip": "15.0197.99",
-    "posto_grad": "3ºSG",
-    "especialidade": "MC",
-    "nome_completo": "ROBSON SANTOS DA SILVA",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Robson Santos da Silva",
     "nome_guerra": "ROBSON",
-    "rotulo": "3ºSG (MC) ROBSON",
+    "rotulo": "3SG ROBSON",
     "email_funcional": "robson.santos@marinha.mil.br",
     "email_pessoal": "robson.gds.27@gmail.com"
   },
   "diego.marinho@marinha.mil.br": {
     "nip": "15.0338.56",
-    "posto_grad": "3ºSG",
-    "especialidade": "MO",
-    "nome_completo": "DIEGO DA SILVA MARINHO",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Diego da Silva Marinho",
     "nome_guerra": "MARINHO",
-    "rotulo": "3ºSG (MO) MARINHO",
+    "rotulo": "3SG MARINHO",
     "email_funcional": "diego.marinho@marinha.mil.br",
     "email_pessoal": "diego.marinho.233@gmail.com"
   },
   "diego.marinho.233@gmail.com": {
     "nip": "15.0338.56",
-    "posto_grad": "3ºSG",
-    "especialidade": "MO",
-    "nome_completo": "DIEGO DA SILVA MARINHO",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Diego da Silva Marinho",
     "nome_guerra": "MARINHO",
-    "rotulo": "3ºSG (MO) MARINHO",
+    "rotulo": "3SG MARINHO",
     "email_funcional": "diego.marinho@marinha.mil.br",
     "email_pessoal": "diego.marinho.233@gmail.com"
   },
   "erlley110394@gmail.com": {
     "nip": "15.0362.51",
-    "posto_grad": "3ºSG",
-    "especialidade": "MR",
-    "nome_completo": "ERLLEY JOEL FRANÇA DOS SANTOS",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Erlley Joel França dos Santos",
     "nome_guerra": "ERLLEY",
-    "rotulo": "3ºSG (MR) ERLLEY"
+    "rotulo": "3SG ERLLEY",
+    "email_funcional": "erlley110394@gmail.com",
+    "email_pessoal": "erlley110394@gmail.com"
   },
   "aciolycrl@gmail.com": {
     "nip": "19.0099.33",
     "posto_grad": "CB",
-    "especialidade": "MR",
-    "nome_completo": "LUIZ MATEUS ACIOLY DO CARMO",
+    "especialidade": "CFT",
+    "nome_completo": "Luiz Mateus Acioly do Carmo",
     "nome_guerra": "ACIOLY",
-    "rotulo": "CB (MR) ACIOLY"
+    "rotulo": "CB ACIOLY",
+    "email_funcional": "aciolycrl@gmail.com",
+    "email_pessoal": "aciolycrl@gmail.com"
   },
   "andresouza4778@gmail.com": {
     "nip": "21.0512.41",
     "posto_grad": "CB",
-    "especialidade": "SQ",
-    "nome_completo": "ANDRÉ LUCAS TAVARES SOUZA",
-    "nome_guerra": "ANDRÉ LUCAS",
-    "rotulo": "CB (SQ) ANDRÉ LUCAS"
+    "especialidade": "CFT",
+    "nome_completo": "André Lucas Tavares Souza",
+    "nome_guerra": "ANDRÉ",
+    "rotulo": "CB ANDRÉ",
+    "email_funcional": "andresouza4778@gmail.com",
+    "email_pessoal": "andresouza4778@gmail.com"
   },
   "thaina44gomes@gmail.com": {
     "nip": "25.4248.23",
@@ -800,34 +1038,42 @@ export const GAP_MILITARES_MAP: Record<string, MilitarMapItem> = {
   "pacificoluzia45@gmail.com": {
     "nip": "25.4252.26",
     "posto_grad": "CB",
-    "especialidade": "RM2-EF",
-    "nome_completo": "LUZIA PACÍFICO DOS SANTOS",
+    "especialidade": "CFT",
+    "nome_completo": "Luzia Pacífico dos Santos",
     "nome_guerra": "LUZIA",
-    "rotulo": "CB (RM2-EF) LUZIA"
+    "rotulo": "CB LUZIA",
+    "email_funcional": "pacificoluzia45@gmail.com",
+    "email_pessoal": "pacificoluzia45@gmail.com"
   },
   "pacificoandreza253@gmail.com": {
     "nip": "25.4259.27",
     "posto_grad": "CB",
-    "especialidade": "RM2-EF",
-    "nome_completo": "ANDREZA PACÍFICO VENÂNCIO",
+    "especialidade": "CFT",
+    "nome_completo": "Andreza Pacífico Venâncio",
     "nome_guerra": "ANDREZA",
-    "rotulo": "CB (RM2-EF) ANDREZA"
+    "rotulo": "CB ANDREZA",
+    "email_funcional": "pacificoandreza253@gmail.com",
+    "email_pessoal": "pacificoandreza253@gmail.com"
   },
   "marla.ingridh@gmail.com": {
     "nip": "25.4262.29",
     "posto_grad": "CB",
-    "especialidade": "RM2-PD",
-    "nome_completo": "MARLA INGRIDH ROCHA GUEDES",
+    "especialidade": "CFT",
+    "nome_completo": "Marla Ingridh Rocha Guedes",
     "nome_guerra": "MARLA",
-    "rotulo": "CB (RM2-PD) MARLA"
+    "rotulo": "CB MARLA",
+    "email_funcional": "marla.ingridh@gmail.com",
+    "email_pessoal": "marla.ingridh@gmail.com"
   },
   "matheussantosmb2000@gmail.com": {
     "nip": "22.1773.29",
     "posto_grad": "MN",
-    "especialidade": "RM-2",
-    "nome_completo": "MATEUS DIAS DE ALMEIDA",
+    "especialidade": "CFT",
+    "nome_completo": "Mateus Dias de Almeida",
     "nome_guerra": "DIAS",
-    "rotulo": "MN (RM-2) DIAS"
+    "rotulo": "MN DIAS",
+    "email_funcional": "matheussantosmb2000@gmail.com",
+    "email_pessoal": "matheussantosmb2000@gmail.com"
   },
   "carloshrc6@gmail.com": {
     "nip": "22.1804.27",
@@ -840,58 +1086,252 @@ export const GAP_MILITARES_MAP: Record<string, MilitarMapItem> = {
   "gabrieldacostatanantatanantat@gmail.com": {
     "nip": "22.1807.29",
     "posto_grad": "MN",
-    "especialidade": "RM-2",
-    "nome_completo": "GABRIEL DA COSTA TANANTA",
+    "especialidade": "CFT",
+    "nome_completo": "Gabriel da Costa Tananta",
     "nome_guerra": "TANANTA",
-    "rotulo": "MN (RM-2) TANANTA"
+    "rotulo": "MN TANANTA",
+    "email_funcional": "gabrieldacostatanantatanantat@gmail.com",
+    "email_pessoal": "gabrieldacostatanantatanantat@gmail.com"
   },
   "evertonarcanjobc123@gmail.com": {
     "nip": "22.1810.24",
     "posto_grad": "MN",
-    "especialidade": "RM-2",
-    "nome_completo": "EVERTON ARCANJO GARRIDO",
+    "especialidade": "CFT",
+    "nome_completo": "Everton Arcanjo Garrido",
     "nome_guerra": "GARRIDO",
-    "rotulo": "MN (RM-2) GARRIDO"
+    "rotulo": "MN GARRIDO",
+    "email_funcional": "evertonarcanjobc123@gmail.com",
+    "email_pessoal": "evertonarcanjobc123@gmail.com"
   },
   "pedrinhograndes16@gmail.com": {
     "nip": "24.3773.25",
     "posto_grad": "MN",
-    "especialidade": "RM-2",
-    "nome_completo": "LUIS ANTONIO GRANDE LOPES",
-    "nome_guerra": "LOPES",
-    "rotulo": "MN (RM-2) LOPES"
+    "especialidade": "CFT",
+    "nome_completo": "Luis Antonio Grande Lopes",
+    "nome_guerra": "GRANDE",
+    "rotulo": "MN GRANDE",
+    "email_funcional": "pedrinhograndes16@gmail.com",
+    "email_pessoal": "pedrinhograndes16@gmail.com"
   },
   "danleyataide17@gmail.com": {
     "nip": "25.3312.21",
     "posto_grad": "MN",
-    "especialidade": "RC",
-    "nome_completo": "DANLEY ATAIDE ANGELO",
+    "especialidade": "CFT",
+    "nome_completo": "Danley Ataide Angelo",
     "nome_guerra": "DANLEY",
-    "rotulo": "MN (RC) DANLEY"
+    "rotulo": "MN DANLEY",
+    "email_funcional": "danleyataide17@gmail.com",
+    "email_pessoal": "danleyataide17@gmail.com"
   },
   "haymanpequeno87@gmail.com": {
     "nip": "25.3325.20",
     "posto_grad": "MN",
-    "especialidade": "RC",
-    "nome_completo": "HAYMAN PEQUENO DA SILVA",
-    "nome_guerra": "HAYMAN",
-    "rotulo": "MN (RC) HAYMAN"
+    "especialidade": "CFT",
+    "nome_completo": "Hayman Pequeno da Silva",
+    "nome_guerra": "PEQUENO",
+    "rotulo": "MN PEQUENO",
+    "email_funcional": "haymanpequeno87@gmail.com",
+    "email_pessoal": "haymanpequeno87@gmail.com"
   },
   "jandersonvinicius290@gmail.com": {
     "nip": "25.3360.29",
     "posto_grad": "MN",
-    "especialidade": "RC",
-    "nome_completo": "JANDERSON VINICIUS DA COSTA D'AVILA",
+    "especialidade": "CFT",
+    "nome_completo": "Janderson Vinicius da Costa D'Avila",
     "nome_guerra": "D'AVILA",
-    "rotulo": "MN (RC) D'AVILA"
+    "rotulo": "MN D'AVILA",
+    "email_funcional": "jandersonvinicius290@gmail.com",
+    "email_pessoal": "jandersonvinicius290@gmail.com"
   },
   "levycastro75@gmail.com": {
     "nip": "25.3376.29",
     "posto_grad": "MN",
-    "especialidade": "RC",
-    "nome_completo": "LEVY DE CASTRO MACEDO",
-    "nome_guerra": "LEVY",
-    "rotulo": "MN (RC) LEVY"
+    "especialidade": "CFT",
+    "nome_completo": "Levy de Castro Macedo",
+    "nome_guerra": "CASTRO",
+    "rotulo": "MN CASTRO",
+    "email_funcional": "levycastro75@gmail.com",
+    "email_pessoal": "levycastro75@gmail.com"
+  },
+  "eduardo.held@marinha.mil.br": {
+    "nip": "06.0638.70",
+    "posto_grad": "CF",
+    "especialidade": "CFT",
+    "nome_completo": "Eduardo Guimarães de Held",
+    "nome_guerra": "HELD",
+    "rotulo": "CF HELD",
+    "email_funcional": "eduardo.held@marinha.mil.br"
+  },
+  "edson.santos@marinha.mil.br": {
+    "nip": "15.0198.00",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Leonardo Silva Ribeiro",
+    "nome_guerra": "RIBEIRO",
+    "rotulo": "3SG RIBEIRO",
+    "email_funcional": "edson.santos@marinha.mil.br"
+  },
+  "humberto.serra@marinha.mil.br": {
+    "nip": "99.1860.39",
+    "posto_grad": "SO",
+    "especialidade": "CFT",
+    "nome_completo": "Humberto Marino dos Santos Serra",
+    "nome_guerra": "MARINO",
+    "rotulo": "SO MARINO",
+    "email_funcional": "humberto.serra@marinha.mil.br"
+  },
+  "edvaldo.souza@marinha.mil.br": {
+    "nip": "97.1125.42",
+    "posto_grad": "SO",
+    "especialidade": "CFT",
+    "nome_completo": "Edvaldo Vicente de Souza",
+    "nome_guerra": "EDVALDO",
+    "rotulo": "SO EDVALDO",
+    "email_funcional": "edvaldo.souza@marinha.mil.br"
+  },
+  "bruno.rubem@marinha.mil.br": {
+    "nip": "07.1546.58",
+    "posto_grad": "1SG",
+    "especialidade": "CFT",
+    "nome_completo": "Bruno Rodrigues Rubem",
+    "nome_guerra": "RUBEM",
+    "rotulo": "1SG RUBEM",
+    "email_funcional": "bruno.rubem@marinha.mil.br"
+  },
+  "tiago.faria@marinha.mil.br": {
+    "nip": "05.0624.38",
+    "posto_grad": "1SG",
+    "especialidade": "CFT",
+    "nome_completo": "Tiago Gonçalves Faria",
+    "nome_guerra": "TIAGO",
+    "rotulo": "1SG TIAGO",
+    "email_funcional": "tiago.faria@marinha.mil.br"
+  },
+  "nilton.junior@marinha.mil.br": {
+    "nip": "14.0992.17",
+    "posto_grad": "2SG",
+    "especialidade": "CFT",
+    "nome_completo": "Nilton da Silva Carvalho Junior",
+    "nome_guerra": "NILTON",
+    "rotulo": "2SG NILTON",
+    "email_funcional": "nilton.junior@marinha.mil.br"
+  },
+  "emilson.geraldo@marinha.mil.br": {
+    "nip": "15.1637.33",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Emilson Pontes Geraldo",
+    "nome_guerra": "GERALDO",
+    "rotulo": "3SG GERALDO",
+    "email_funcional": "emilson.geraldo@marinha.mil.br"
+  },
+  "jose.cousaquiviti@marinha.mil.br": {
+    "nip": "13.0332.98",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "José Vinícius Ramos Fernandes Cousaquiviti",
+    "nome_guerra": "COUSAQUIVITI",
+    "rotulo": "3SG COUSAQUIVITI",
+    "email_funcional": "jose.cousaquiviti@marinha.mil.br"
+  },
+  "joao.paz@marinha.mil.br": {
+    "nip": "15.0289.92",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "João Cleber da Silva Paz",
+    "nome_guerra": "CLEBER",
+    "rotulo": "3SG CLEBER",
+    "email_funcional": "joao.paz@marinha.mil.br"
+  },
+  "inacio.guimaraes@marinha.mil.br": {
+    "nip": "13.1220.70",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Inácio Carvalho Guimarães",
+    "nome_guerra": "INÁCIO",
+    "rotulo": "3SG INÁCIO",
+    "email_funcional": "inacio.guimaraes@marinha.mil.br"
+  },
+  "joao.ramos@marinha.mil.br": {
+    "nip": "15.0234.01",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "João Marcos Farias Ramos",
+    "nome_guerra": "JOÃO MARCOS",
+    "rotulo": "3SG JOÃO MARCOS",
+    "email_funcional": "joao.ramos@marinha.mil.br"
+  },
+  "bruno.jesus@marinha.mil.br": {
+    "nip": "15.0311.01",
+    "posto_grad": "3SG",
+    "especialidade": "CFT",
+    "nome_completo": "Bruno Martins Souza de Jesus",
+    "nome_guerra": "BRUNO MARTINS",
+    "rotulo": "3SG BRUNO MARTINS",
+    "email_funcional": "bruno.jesus@marinha.mil.br"
+  },
+  "cilas.santos@marinha.mil.br": {
+    "nip": "18.0073.09",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Cilas de Oliveira Santos",
+    "nome_guerra": "CILAS",
+    "rotulo": "CB CILAS",
+    "email_funcional": "cilas.santos@marinha.mil.br"
+  },
+  "iuri.mello@marinha.mil.br": {
+    "nip": "18.0139.11",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Iuri Henrique de Mello",
+    "nome_guerra": "IURI",
+    "rotulo": "CB IURI",
+    "email_funcional": "iuri.mello@marinha.mil.br"
+  },
+  "gustavo.peres@marinha.mil.br": {
+    "nip": "18.0135.89",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Gustavo Wellington de Jesus Peres",
+    "nome_guerra": "WELLINGTON",
+    "rotulo": "CB WELLINGTON",
+    "email_funcional": "gustavo.peres@marinha.mil.br"
+  },
+  "emanoel.moreira@marinha.mil.br": {
+    "nip": "20.0417.48",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Emanoel Ferreira Moreira",
+    "nome_guerra": "EMANOEL",
+    "rotulo": "CB EMANOEL",
+    "email_funcional": "emanoel.moreira@marinha.mil.br"
+  },
+  "joao.souza@marinha.mil.br": {
+    "nip": "21.0805.42",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "João Luiz Borduan de Souza",
+    "nome_guerra": "BORDUAN",
+    "rotulo": "CB BORDUAN",
+    "email_funcional": "joao.souza@marinha.mil.br"
+  },
+  "italo.mendes@marinha.mil.br": {
+    "nip": "21.0779.41",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Ítalo Gabriel Silva Mendes",
+    "nome_guerra": "ÍTALO",
+    "rotulo": "CB ÍTALO",
+    "email_funcional": "italo.mendes@marinha.mil.br"
+  },
+  "alexandre.elias@marinha.mil.br": {
+    "nip": "21.0767.40",
+    "posto_grad": "CB",
+    "especialidade": "CFT",
+    "nome_completo": "Alexandre de Oliveira Elias",
+    "nome_guerra": "ELIAS",
+    "rotulo": "CB ELIAS",
+    "email_funcional": "alexandre.elias@marinha.mil.br"
   }
 };
 
@@ -967,6 +1407,19 @@ export function salvarNovaSenhaUsuario(email: string, novaSenha: string): void {
   }
 }
 
+export function resetarSenhaParaPadrao(email: string): void {
+  const norm = normalizarEmail(email);
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(KEY_SENHAS_CACHE);
+    const senhas = raw ? JSON.parse(raw) : {};
+    delete senhas[norm];
+    window.localStorage.setItem(KEY_SENHAS_CACHE, JSON.stringify(senhas));
+  } catch (e) {
+    console.warn("[SisPesCFT] Erro ao resetar senha local:", e);
+  }
+}
+
 export function obterMilitarVinculado(email: string): MilitarMapItem | null {
   const norm = normalizarEmail(email);
   if (!norm) return null;
@@ -998,6 +1451,22 @@ export function obterMilitarVinculado(email: string): MilitarMapItem | null {
   return null;
 }
 
+export function obterListaMilitaresCompleta(): MilitarMapItem[] {
+  const lista: MilitarMapItem[] = [];
+  const nipsVistos = new Set<string>();
+
+  for (const em in GAP_MILITARES_MAP) {
+    const m = GAP_MILITARES_MAP[em];
+    const chave = (m.nip || m.nome_guerra).toLowerCase();
+    if (!nipsVistos.has(chave)) {
+      nipsVistos.add(chave);
+      lista.push({ ...m });
+    }
+  }
+
+  return lista;
+}
+
 export function verificarEmailAutorizado(email: string): {
   autorizado: boolean;
   usuario?: UsuarioCftAuth;
@@ -1013,7 +1482,7 @@ export function verificarEmailAutorizado(email: string): {
         email: norm,
         email_funcional: "cristiano.sacramento@marinha.mil.br",
         email_pessoal: "sacrasub@gmail.com",
-        nome: "SO SACRAMENTO — CRISTIANO DO SACRAMENTO SOARES",
+        nome: "CRISTIANO DO SACRAMENTO SOARES",
         role: "super_admin",
         ativo: true,
         cargo: "Super Admin Master",
@@ -1074,7 +1543,7 @@ export function mapearParaUsuarioSisPes(
     nip: milItem?.nip,
     posto: (milItem?.posto_grad as Posto) || "SO",
     nomeGuerra: milItem?.nome_guerra || authItem.nome.split(" ")[0],
-    roleCft: role,
+    roleCft: role === "visualizador" ? "operador" : role,
   };
 }
 
@@ -1225,7 +1694,7 @@ export async function registrarSolicitacaoAcesso(dados: {
 
 export async function aprovarSolicitacaoAcesso(
   id: string,
-  role: "super_admin" | "admin" | "operador" = "operador"
+  role: "super_admin" | "admin" | "operador" | "visualizador" = "operador"
 ): Promise<void> {
   const lista = obterSolicitacoesAcesso();
   const sol = lista.find((s) => s.id === id);
@@ -1257,9 +1726,27 @@ export async function aprovarSolicitacaoAcesso(
   } catch {}
 }
 
+export async function rejeitarSolicitacaoAcesso(id: string): Promise<void> {
+  const lista = obterSolicitacoesAcesso();
+  const sol = lista.find((s) => s.id === id);
+  if (!sol) return;
+
+  sol.status = "rejeitado";
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(KEY_SOLICITACOES, JSON.stringify(lista));
+  }
+
+  try {
+    const db = getFirebaseDb();
+    if (db) {
+      await updateDoc(doc(db, "gap_solicitacoes", id), { status: "rejeitado" });
+    }
+  } catch {}
+}
+
 export function cadastrarEmailsEmLote(
   texto: string,
-  role: "super_admin" | "admin" | "operador" = "operador"
+  role: "super_admin" | "admin" | "operador" | "visualizador" = "operador"
 ): { adicionados: number; total: number } {
   const linhas = texto
     .split(/[\r\n,;]+/)
@@ -1288,4 +1775,87 @@ export function cadastrarEmailsEmLote(
   }
 
   return { adicionados, total: users.length };
+}
+
+export function cadastrarUsuarioIndividual(dados: {
+  email: string;
+  email_funcional?: string;
+  email_pessoal?: string;
+  nome: string;
+  role: "super_admin" | "admin" | "operador" | "visualizador";
+  cargo?: string;
+  nip?: string;
+  posto_grad?: string;
+  nome_guerra?: string;
+}): void {
+  const emailNorm = normalizarEmail(dados.email);
+  if (!emailNorm) throw new Error("E-mail principal é obrigatório.");
+
+  const users = obterCacheUsuarios();
+  const idx = users.findIndex((u) => normalizarEmail(u.email) === emailNorm);
+
+  const novoUsuario: UsuarioCftAuth = {
+    email: emailNorm,
+    email_funcional: dados.email_funcional ? normalizarEmail(dados.email_funcional) : undefined,
+    email_pessoal: dados.email_pessoal ? normalizarEmail(dados.email_pessoal) : undefined,
+    nome: dados.nome.trim(),
+    role: dados.role,
+    ativo: true,
+    tipo: emailNorm.endsWith("@marinha.mil.br") ? "institucional" : "google",
+    cargo: dados.cargo || (dados.posto_grad ? `${dados.posto_grad} - Tripulação CFT` : "Tripulação CFT"),
+  };
+
+  if (idx !== -1) {
+    users[idx] = novoUsuario;
+  } else {
+    users.unshift(novoUsuario);
+  }
+
+  salvarCacheUsuarios(users);
+
+  // Vincular ao mapa de militares
+  if (dados.nip || dados.nome_guerra) {
+    const itemMap: MilitarMapItem = {
+      nip: dados.nip || "00.0000.00",
+      posto_grad: dados.posto_grad || "PRAÇA",
+      nome_completo: dados.nome,
+      nome_guerra: dados.nome_guerra || dados.nome.split(" ")[0],
+      rotulo: dados.posto_grad ? `${dados.posto_grad} ${dados.nome_guerra || ""}`.trim() : dados.nome,
+      email_funcional: dados.email_funcional || emailNorm,
+      email_pessoal: dados.email_pessoal,
+    };
+    GAP_MILITARES_MAP[emailNorm] = itemMap;
+    if (dados.email_pessoal) GAP_MILITARES_MAP[normalizarEmail(dados.email_pessoal)] = itemMap;
+    if (dados.email_funcional) GAP_MILITARES_MAP[normalizarEmail(dados.email_funcional)] = itemMap;
+  }
+}
+
+export function alterarStatusUsuario(email: string, ativo: boolean): void {
+  const norm = normalizarEmail(email);
+  const users = obterCacheUsuarios();
+  const item = users.find((u) => normalizarEmail(u.email) === norm);
+  if (item) {
+    item.ativo = ativo;
+    salvarCacheUsuarios(users);
+  }
+}
+
+export function alterarRoleUsuario(
+  email: string,
+  novoRole: "super_admin" | "admin" | "operador" | "visualizador"
+): void {
+  const norm = normalizarEmail(email);
+  const users = obterCacheUsuarios();
+  const item = users.find((u) => normalizarEmail(u.email) === norm);
+  if (item) {
+    item.role = novoRole;
+    salvarCacheUsuarios(users);
+  }
+}
+
+export function removerUsuario(email: string): void {
+  const norm = normalizarEmail(email);
+  let users = obterCacheUsuarios();
+  users = users.filter((u) => normalizarEmail(u.email) !== norm);
+  salvarCacheUsuarios(users);
 }
