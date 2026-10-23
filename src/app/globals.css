@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+/* ===================================================================
+   SisPesCFT — Design System
+   Paleta institucional: azul-marinho profundo + dourado, alto contraste.
+   =================================================================== */
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-rajdhani), var(--font-inter), ui-sans-serif, sans-serif;
+
+  --color-navy-950: #040a14;
+  --color-navy-900: #08111f;
+  --color-navy-850: #0c182b;
+  --color-navy-800: #112038;
+  --color-navy-700: #182c4c;
+  --color-navy-600: #213b66;
+  --color-navy-500: #2c4f88;
+
+  --color-gold-200: #f7e7b6;
+  --color-gold-300: #f0d48a;
+  --color-gold-400: #e5bd5c;
+  --color-gold-500: #d4a63a;
+  --color-gold-600: #b08523;
+  --color-gold-700: #86631a;
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-sheet-up: sheet-up 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-ring: pulse-ring 2s ease-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes sheet-up {
+    from { opacity: 0; transform: translateY(24px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgb(248 113 113 / 0.55); }
+    70% { box-shadow: 0 0 0 10px rgb(248 113 113 / 0); }
+    100% { box-shadow: 0 0 0 0 rgb(248 113 113 / 0); }
+  }
+  @keyframes shimmer {
+    from { background-position: -400px 0; }
+    to { background-position: 400px 0; }
+  }
+}
+
+/* ---------- Base ---------- */
+@layer base {
+  html {
+    color-scheme: dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-navy-950 text-slate-100 antialiased font-sans;
+    background-image:
+      radial-gradient(1200px 600px at 10% -10%, rgb(44 79 136 / 0.35), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgb(212 166 58 / 0.10), transparent 60%),
+      radial-gradient(800px 600px at 50% 120%, rgb(33 59 102 / 0.35), transparent 60%);
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+  ::selection {
+    @apply bg-gold-500/40 text-white;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-gold-400;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(51 65 85 / 0.8) transparent;
+  }
+}
+
+/* ---------- Componentes ---------- */
+@layer components {
+  .glass,
+  .card {
+    background: linear-gradient(180deg, rgb(17 32 56 / 0.72), rgb(12 24 43 / 0.72));
+    border: 1px solid rgb(148 163 184 / 0.12);
+    box-shadow:
+      0 1px 0 0 rgb(255 255 255 / 0.04) inset,
+      0 20px 40px -24px rgb(0 0 0 / 0.6);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .card {
+    @apply rounded-2xl;
+  }
+
+  .card-hover {
+    @apply transition duration-300 hover:-translate-y-0.5 hover:border-gold-500/30 hover:shadow-[0_20px_50px_-20px_rgb(212_166_58/0.25)];
+  }
+
+  .label {
+    @apply mb-1.5 block text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-600/40 bg-navy-900/80 px-3.5 py-2.5 text-sm text-slate-100
+      placeholder:text-slate-500 transition
+      focus:border-gold-400/70 focus:ring-2 focus:ring-gold-400/20 focus:outline-none
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset whitespace-nowrap;
+  }
+
+  .text-gradient-gold {
+    @apply bg-gradient-to-r from-gold-200 via-gold-400 to-gold-500 bg-clip-text text-transparent;
+  }
+
+  .skeleton {
+    @apply rounded-xl bg-navy-800;
+    background-image: linear-gradient(90deg, transparent, rgb(148 163 184 / 0.08), transparent);
+    background-size: 400px 100%;
+    animation: var(--animate-shimmer);
+  }
+
+  .stagger > * {
+    animation: var(--animate-fade-up);
+  }
+  .stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .stagger > *:nth-child(n + 7) { animation-delay: 240ms; }
+}
+
+/* ---------- Impressão (relatórios do Painel do Comando) ---------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-area {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .card,
+  .glass {
+    background: #fff !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    break-inside: avoid;
+  }
+  .print-dark-text,
+  .print-dark-text * {
+    color: #0f172a !important;
+  }
+  .only-print {
+    display: block !important;
+  }
+}
+.only-print {
+  display: none;
+}
