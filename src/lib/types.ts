@@ -178,6 +178,11 @@ export interface Usuario {
   cargo: string;
   perfil: Perfil;
   divisao?: DivisaoId;
+  email?: string;
+  nip?: string;
+  posto?: Posto;
+  nomeGuerra?: string;
+  roleCft?: "super_admin" | "admin" | "operador";
 }
 
 /* ---------- Tipos derivados (motores de cálculo) ---------- */
