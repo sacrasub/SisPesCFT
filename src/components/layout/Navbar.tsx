@@ -254,10 +254,12 @@ export function Navbar() {
       <LoginModal aberto={modalAberto} onFechar={fecharModal} />
 
       {/* Modal de Gestão de Acessos para Administradores */}
-      <GestaoAcessosModal
-        aberto={gestaoModalAberto}
-        onFechar={() => setGestaoModalAberto(false)}
-      />
+      {gestaoModalAberto && (
+        <GestaoAcessosModal
+          aberto={gestaoModalAberto}
+          onFechar={() => setGestaoModalAberto(false)}
+        />
+      )}
     </>
   );
 }

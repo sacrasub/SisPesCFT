@@ -1,24 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useData } from "@/store/DataProvider";
 import { useAuth } from "@/store/AuthProvider";
 import { Navbar } from "./Navbar";
 import { BottomNav } from "./BottomNav";
-import { LoginModal } from "@/components/auth/LoginModal";
 import { Anchor, ShieldAlert, Loader2 } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { carregando, erro } = useData();
-  const { usuario, pronto } = useAuth();
-  const [modalLoginAberto, setModalLoginAberto] = useState(false);
+  const { usuario, pronto, abrirModal } = useAuth();
 
   // Se o usuário não estiver logado após carregar a sessão, abre modal de login institucional
   useEffect(() => {
     if (pronto && !usuario) {
-      setModalLoginAberto(true);
+      abrirModal();
     }
-  }, [pronto, usuario]);
+  }, [pronto, usuario, abrirModal]);
 
   if (carregando || !pronto) {
     return (
@@ -63,12 +61,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Dock Inferior Mobile */}
       <BottomNav />
-
-      {/* Modal de Login (para troca de divisão ou primeiro acesso) */}
-      <LoginModal
-        aberto={modalLoginAberto}
-        onFechar={() => setModalLoginAberto(false)}
-      />
     </div>
   );
 }

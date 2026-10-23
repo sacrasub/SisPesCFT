@@ -91,8 +91,6 @@ export function GestaoAcessosModal({ aberto, onFechar }: GestaoAcessosModalProps
     }
   }, [aberto]);
 
-  if (!aberto) return null;
-
   const pendentes = solicitacoes.filter((s) => s.status === "pendente");
 
   const mostrarMensagem = (msg: string) => {
@@ -252,6 +250,8 @@ export function GestaoAcessosModal({ aberto, onFechar }: GestaoAcessosModalProps
       return txt.includes(q);
     });
   }, [usuarios, filtro]);
+
+  if (!aberto) return null;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
