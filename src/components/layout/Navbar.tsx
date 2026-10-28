@@ -34,6 +34,7 @@ export function Navbar() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
+    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
     { href: "/lancamentos", label: "Lançamentos", icone: FileSpreadsheet },
     { href: "/escalas", label: "Escalas", icone: CalendarCheck },
     { href: "/ferias", label: "Férias & Plano", icone: CalendarDays },

@@ -13,6 +13,7 @@ import {
 } from "@/lib/constants";
 import { uid, porAntiguidade } from "@/lib/utils";
 import { podeEditarMilitar } from "@/lib/permissions";
+import { obterIncumbenciasAcumuladas } from "@/lib/engine/disponibilidade";
 import { DivisaoBadge, PostoChip, RestricaoBadge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -276,16 +277,36 @@ export default function EfetivoPage() {
                     </td>
 
                     <td className="py-2.5 px-3">
-                      <DivisaoBadge divisao={m.divisao} />
+                      <div className="flex flex-col gap-1 items-start">
+                        <DivisaoBadge divisao={m.divisao} />
+                        {m.setorCodigo && (
+                          <span className="text-[10px] font-mono font-bold text-sky-300 bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-500/30">
+                            {m.setorCodigo}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-2.5 px-3 text-slate-300">
-                      <div>{m.funcao || "—"}</div>
+                      <div className="font-semibold text-slate-200">{m.funcao || m.funcaoPrincipal || "—"}</div>
                       {m.especialidade && (
                         <div className="text-[10px] font-mono text-slate-500">
                           Esp: {m.especialidade}
                         </div>
                       )}
+                      {(m.incumbencias?.length ?? 0) > 0 && (
+                        <div className="text-[10px] text-amber-300/90 mt-0.5">
+                          🗝️ {m.incumbencias!.join(" • ")}
+                        </div>
+                      )}
+                      {obterIncumbenciasAcumuladas(ctx, m.id, hoje).map((inc, idx) => (
+                        <div
+                          key={idx}
+                          className="mt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40"
+                        >
+                          ⚠️ Acumulando: {inc.incumbencia} (de {inc.titularNome})
+                        </div>
+                      ))}
                     </td>
 
                     <td className="py-2.5 px-3">

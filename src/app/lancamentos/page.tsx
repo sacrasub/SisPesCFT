@@ -90,6 +90,8 @@ export default function LancamentosPage() {
   const [formImpactaEscala, setFormImpactaEscala] = useState<boolean>(true);
   const [formStatus, setFormStatus] = useState<AfastamentoStatus>("PREVISTO");
   const [formObservacoes, setFormObservacoes] = useState<string>("");
+  const [formTerminoAsd, setFormTerminoAsd] = useState<boolean>(false);
+  const [formSubstitutoId, setFormSubstitutoId] = useState<string>("");
 
   // Subtipos sugeridos conforme categoria e divisão
   const subtiposSugeridos = useMemo(() => {
@@ -119,6 +121,8 @@ export default function LancamentosPage() {
       local: formLocal,
       inicio: formInicio,
       fim: formFim,
+      terminoAsd: formTerminoAsd,
+      militarSubstitutoId: formSubstitutoId || undefined,
       militarIds: formMilitares,
       status: formStatus,
       impactaEscala: formImpactaEscala,
@@ -162,6 +166,8 @@ export default function LancamentosPage() {
     setFormImpactaEscala(true);
     setFormStatus("PREVISTO");
     setFormObservacoes("");
+    setFormTerminoAsd(false);
+    setFormSubstitutoId("");
     setModalAberto(true);
   };
 
@@ -179,6 +185,8 @@ export default function LancamentosPage() {
     setFormImpactaEscala(item.impactaEscala);
     setFormStatus(item.status);
     setFormObservacoes(item.observacoes || "");
+    setFormTerminoAsd(Boolean(item.terminoAsd));
+    setFormSubstitutoId(item.militarSubstitutoId || "");
     setModalAberto(true);
   };
 
@@ -204,6 +212,8 @@ export default function LancamentosPage() {
       local: formLocal.trim() || undefined,
       inicio: formInicio,
       fim: formFim,
+      terminoAsd: formTerminoAsd,
+      militarSubstitutoId: formSubstitutoId || undefined,
       militarIds: formMilitares,
       status: formStatus,
       impactaEscala: formImpactaEscala,
@@ -444,12 +454,22 @@ export default function LancamentosPage() {
                   <div className="text-xs text-slate-300 flex items-center gap-2 flex-wrap font-mono">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      {fmt(item.inicio)} até {fmt(item.fim)}
+                      {item.terminoAsd
+                        ? `${fmt(item.inicio)} A ASD`
+                        : `${fmt(item.inicio)} até ${fmt(item.fim)}`}
                     </span>
                     <span className="text-slate-500">•</span>
                     <span className="text-gold-300 font-semibold">
-                      {dias} dia{dias > 1 ? "s" : ""}
+                      {item.terminoAsd ? "ASD (Até 2ª Determinação)" : `${dias} dia${dias > 1 ? "s" : ""}`}
                     </span>
+                    {item.militarSubstitutoId && (
+                      <>
+                        <span className="text-slate-500">•</span>
+                        <span className="text-emerald-300 font-sans font-semibold">
+                          Substituto: {nomeMilitar(ctx.militarMap.get(item.militarSubstitutoId))}
+                        </span>
+                      </>
+                    )}
                   </div>
 
                   {/* Militares Envolvidos */}
@@ -755,6 +775,43 @@ export default function LancamentosPage() {
                 <option value="PREVISTO">Previsto (Planejamento)</option>
                 <option value="CONFIRMADO">Confirmado (Execução)</option>
               </select>
+            </div>
+          </div>
+
+          {/* Plano Semanal: Militar Substituto Obrigatório e Término ASD */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30">
+            <div>
+              <label className="label text-amber-300">
+                Militar Substituto (Plano Semanal — Item 2.2/2.3)
+              </label>
+              <select
+                value={formSubstitutoId}
+                onChange={(e) => setFormSubstitutoId(e.target.value)}
+                className="input text-xs py-1.5"
+              >
+                <option value="">Selecione o militar substituto...</option>
+                {ctx.militares
+                  .filter((m) => !formMilitares.includes(m.id))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {nomeMilitar(m)} [{m.setorCodigo ?? m.divisao}]
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="flex items-center pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formTerminoAsd}
+                  onChange={(e) => setFormTerminoAsd(e.target.checked)}
+                  className="rounded border-slate-700 bg-navy-900 text-gold-500 focus:ring-gold-400"
+                />
+                <span className="text-xs font-bold text-rose-300">
+                  Término ASD (Até Segunda Determinação)
+                </span>
+              </label>
             </div>
           </div>
 

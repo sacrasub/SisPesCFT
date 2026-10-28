@@ -1,7 +1,29 @@
 import { addDays, diffDays, diasNoMes, eachDay, inicioMes, isFimDeSemana, diaSemana, DIAS_SEMANA_CURTOS } from "../dates";
 import { porAntiguidade } from "../utils";
-import type { EscalaConfig, ISODate, Militar, Posto, StatusCobertura } from "../types";
-import { indisponibilidadeEscala, afastamentosNoDia, type Contexto, type Indisponibilidade } from "./disponibilidade";
+import {
+  HORARIOS_PADRAO_4_TEMPOS,
+  MOTIVO_DISPENSA_LABEL,
+  REGRAS_PONTUACAO_OI_02_06D,
+} from "../constants";
+import type {
+  DetalheEmergenciaDia,
+  EscalaConfig,
+  EscalaTipo,
+  ISODate,
+  ItemEscalaDia,
+  LegendaOficialCapitania,
+  LinhaFolhaPresenca,
+  Militar,
+  Posto,
+  StatusCobertura,
+} from "../types";
+import {
+  indisponibilidadeEscala,
+  afastamentosNoDia,
+  obterIncumbenciasAcumuladas,
+  type Contexto,
+  type Indisponibilidade,
+} from "./disponibilidade";
 
 /* ------------------------------------------------------------------ */
 /* Classificação                                                       */
@@ -106,12 +128,13 @@ export function coberturaPeriodo(ctx: Contexto, escala: EscalaConfig, inicio: IS
 }
 
 /* ------------------------------------------------------------------ */
-/* Geração otimizada da escala (previsão)                              */
+/* Geração otimizada da escala (Motor OI 02-06D: Pontos + Modernidade) */
 /* ------------------------------------------------------------------ */
 
 export interface ServicoDia {
   data: ISODate;
   militarIds: string[];
+  retemId?: string;
   /** Postos não guarnecidos por falta de pessoal apto. */
   lacunas: number;
   /** Escala vermelha (sábado/domingo). */
@@ -119,65 +142,109 @@ export interface ServicoDia {
   equipeId?: string;
   /** EQUIPES: equipe da vez estava indisponível e foi substituída. */
   substituicao?: boolean;
+  /** Indica se houve troca de serviço autorizada pelo CF-02 (Papeleta OI 02-06D). */
+  trocaAutorizada?: boolean;
   cobertura: CoberturaDia;
 }
 
 const AQUECIMENTO_DIAS = 21;
 
 /**
- * Gera a previsão de serviço com distribuição equitativa:
- * - nunca escala o mesmo militar em dias consecutivos se houver alternativa;
- * - dias úteis (escala preta) priorizam quem está há mais tempo sem serviço;
- * - fins de semana (escala vermelha) priorizam quem tirou menos serviços vermelhos.
- * Um período de aquecimento anterior ao início equilibra a "conta" de serviços.
+ * Gera a previsão de serviço aplicando as regras da OI 02-06D:
+ * - Filtro "2 para 1" (evita escalar quem tirou serviço em D-1 ou D-2 se houver alternativa);
+ * - Pontuação diferenciada: Rotina Normal (1,0) vs Rotina de Domingo/Feriado (1,5);
+ * - Desempate por MODERNIDADE (`b.antiguidadeOrdem - a.antiguidadeOrdem`: mais moderno é escalado antes do mais antigo);
+ * - Aplica Papeletas de Troca de Serviço (`AUTORIZADO_CF02`).
  */
 export function gerarEscala(ctx: Contexto, escala: EscalaConfig, inicio: ISODate, fim: ISODate): ServicoDia[] {
-  return escala.modo === "EQUIPES" ? gerarEscalaEquipes(ctx, escala, inicio, fim) : gerarEscalaIndividual(ctx, escala, inicio, fim);
+  return escala.modo === "EQUIPES"
+    ? gerarEscalaEquipes(ctx, escala, inicio, fim)
+    : gerarEscalaIndividual(ctx, escala, inicio, fim);
 }
 
 function gerarEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISODate, fim: ISODate): ServicoDia[] {
   const pool = efetivoEscala(ctx, escala);
   const ultimo = new Map<string, ISODate>();
-  const vermelhos = new Map<string, number>();
-  const pretos = new Map<string, number>();
-  const ordem = new Map(pool.map((m, i) => [m.id, i]));
+  const ptsDom = new Map<string, number>();
+  const ptsNorm = new Map<string, number>();
+
+  for (const m of pool) {
+    ptsNorm.set(m.id, m.pontosEscala?.normal ?? 0);
+    ptsDom.set(m.id, m.pontosEscala?.domingoFeriado ?? 0);
+  }
+
+  const trocas = (ctx.db.trocasServico ?? []).filter(
+    (t) => t.posto === escala.id && t.statusAprovacaoAjudante === "AUTORIZADO_CF02",
+  );
+
   const out: ServicoDia[] = [];
 
   for (const data of eachDay(addDays(inicio, -AQUECIMENTO_DIAS), fim)) {
     const cobertura = coberturaDia(ctx, escala, data, pool);
     const indisp = new Set(cobertura.indisponiveis.map((i) => i.militarId));
     const vermelha = isFimDeSemana(data);
-    const ontem = addDays(data, -1);
+    const d1 = addDays(data, -1);
+    const d2 = addDays(data, -2);
 
     const candidatos = pool
       .filter((m) => !indisp.has(m.id))
       .sort((a, b) => {
-        const aOntem = ultimo.get(a.id) === ontem ? 1 : 0;
-        const bOntem = ultimo.get(b.id) === ontem ? 1 : 0;
-        if (aOntem !== bOntem) return aOntem - bOntem;
+        // 1º Filtro 2 para 1 (evita quem tirou serviço em D-1 ou D-2)
+        const aRecente = ultimo.get(a.id) === d1 ? 2 : ultimo.get(a.id) === d2 ? 1 : 0;
+        const bRecente = ultimo.get(b.id) === d1 ? 2 : ultimo.get(b.id) === d2 ? 1 : 0;
+        if (aRecente !== bRecente) return aRecente - bRecente;
+
+        // 2º Menor pontuação acumulada na respectiva rotina (Domingo/Vermelha vs Normal/Preta)
+        const pa = vermelha ? (ptsDom.get(a.id) ?? 0) : (ptsNorm.get(a.id) ?? 0);
+        const pb = vermelha ? (ptsDom.get(b.id) ?? 0) : (ptsNorm.get(b.id) ?? 0);
+        if (Math.abs(pa - pb) > 0.01) return pa - pb;
+
+        // 3º Maior tempo de folga desde o último serviço
         const folgaA = ultimo.has(a.id) ? diffDays(ultimo.get(a.id)!, data) : 999;
         const folgaB = ultimo.has(b.id) ? diffDays(ultimo.get(b.id)!, data) : 999;
-        if (vermelha) {
-          const dv = (vermelhos.get(a.id) ?? 0) - (vermelhos.get(b.id) ?? 0);
-          if (dv) return dv;
-          return folgaB - folgaA || ordem.get(b.id)! - ordem.get(a.id)!;
-        }
-        return folgaB - folgaA || (pretos.get(a.id) ?? 0) - (pretos.get(b.id) ?? 0) || ordem.get(b.id)! - ordem.get(a.id)!;
+        if (folgaA !== folgaB) return folgaB - folgaA;
+
+        // 4º Critério de Desempate OI 02-06D: MAIS MODERNO antes do mais antigo
+        const modA = a.antiguidadeOrdem ?? 99;
+        const modB = b.antiguidadeOrdem ?? 99;
+        return modB - modA;
       });
 
-    const escalados = candidatos.slice(0, escala.postosPorDia).map((m) => m.id);
+    let escalados = candidatos.slice(0, escala.postosPorDia).map((m) => m.id);
+    const retemId = candidatos[escala.postosPorDia]?.id;
+    let trocaAutorizada = false;
+
+    // Verificar Papeleta de Troca de Serviço autorizada pelo Ajudante (CF-02)
+    for (const tr of trocas) {
+      if (tr.dataServicoOriginal === data) {
+        const idx = escalados.indexOf(tr.militarSolicitanteId);
+        if (idx >= 0) {
+          escalados = escalados.map((id, i) => (i === idx ? tr.militarSubstitutoId : id));
+          trocaAutorizada = true;
+        } else if (escalados.length > 0 && !escalados.includes(tr.militarSubstitutoId)) {
+          escalados[0] = tr.militarSubstitutoId;
+          trocaAutorizada = true;
+        }
+      }
+    }
+
     for (const id of escalados) {
       ultimo.set(id, data);
-      const mapa = vermelha ? vermelhos : pretos;
-      mapa.set(id, (mapa.get(id) ?? 0) + 1);
+      if (vermelha) {
+        ptsDom.set(id, (ptsDom.get(id) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.TITULAR);
+      } else {
+        ptsNorm.set(id, (ptsNorm.get(id) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.NORMAL.TITULAR);
+      }
     }
 
     if (data >= inicio) {
       out.push({
         data,
         militarIds: escalados,
+        retemId,
         lacunas: Math.max(0, escala.postosPorDia - escalados.length),
         vermelha,
+        trocaAutorizada,
         cobertura,
       });
     }
@@ -201,7 +268,6 @@ function gerarEscalaEquipes(ctx: Contexto, escala: EscalaConfig, inicio: ISODate
     const slot = (((Math.floor(diffDays(base, data) / turno)) % n) + n) % n;
     const aptas = new Set(cobertura.equipesAptas ?? []);
 
-    // Equipe da vez; se inapta, a próxima apta na sequência assume.
     let idx = slot;
     for (let i = 0; i < n; i++) {
       if (aptas.has(equipes[(slot + i) % n].id)) {
@@ -223,14 +289,21 @@ function gerarEscalaEquipes(ctx: Contexto, escala: EscalaConfig, inicio: ISODate
   });
 }
 
-/** Contagem de serviços por militar no período gerado (para conferência de equidade). */
-export function contagemServicos(servicos: ServicoDia[]): Map<string, { pretos: number; vermelhos: number }> {
-  const mapa = new Map<string, { pretos: number; vermelhos: number }>();
+/** Contagem de serviços e pontos acumulados por militar no período gerado. */
+export function contagemServicos(
+  servicos: ServicoDia[],
+): Map<string, { pretos: number; vermelhos: number; pontos: number }> {
+  const mapa = new Map<string, { pretos: number; vermelhos: number; pontos: number }>();
   for (const s of servicos) {
     for (const id of s.militarIds) {
-      const c = mapa.get(id) ?? { pretos: 0, vermelhos: 0 };
-      if (s.vermelha) c.vermelhos++;
-      else c.pretos++;
+      const c = mapa.get(id) ?? { pretos: 0, vermelhos: 0, pontos: 0 };
+      if (s.vermelha) {
+        c.vermelhos++;
+        c.pontos = Number((c.pontos + REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.TITULAR).toFixed(2));
+      } else {
+        c.pretos++;
+        c.pontos = Number((c.pontos + REGRAS_PONTUACAO_OI_02_06D.NORMAL.TITULAR).toFixed(2));
+      }
       mapa.set(id, c);
     }
   }
@@ -238,20 +311,37 @@ export function contagemServicos(servicos: ServicoDia[]): Map<string, { pretos: 
 }
 
 /* ================================================================== */
-/* GRADE MENSAL PADRÃO SOMOR                                          */
+/* GRADE MENSAL PADRÃO SOMOR + LEGENDA OFICIAL DA CAPITANIA           */
 /* ================================================================== */
 
-/** Sigla de serviço exibida na célula da grade SOMOR. */
-export type SiglaCelula = "CTR" | "MO" | "IN" | "VG" | "OF SERV" | "AUSENTE" | null;
+export type SiglaCelula =
+  | "OSE"
+  | "SECOM"
+  | "CTR"
+  | "CB-AUX"
+  | "MO"
+  | "IN"
+  | "VG"
+  | "IDENT"
+  | "OF SERV"
+  | "SSVÇ"
+  | "Di"
+  | "AUSENTE"
+  | null;
 
-/** Código de cor de fundo da célula na grade SOMOR (tailwind inline-style hex). */
 export const SOMOR_COR: Record<Exclude<SiglaCelula, null>, string> = {
-  CTR:     "#6b7280", // cinza
-  MO:      "#2563eb", // azul
-  IN:      "#db2777", // rosa/magenta
-  VG:      "#374151", // cinza escuro
-  "OF SERV":"#4b5563",// cinza médio
-  AUSENTE: "#92400e", // âmbar escuro (fundo amarelo real fica na UI via bg-amber-600)
+  OSE: "#0284c7",     // azul celeste
+  SECOM: "#0d9488",   // teal
+  CTR: "#6b7280",     // cinza
+  "CB-AUX": "#4f46e5",// indigo
+  MO: "#2563eb",      // azul
+  IN: "#db2777",      // rosa/magenta
+  VG: "#374151",      // cinza escuro
+  IDENT: "#7c3aed",   // violeta
+  "OF SERV": "#4b5563",
+  SSVÇ: "#065f46",    // verde escuro folga pós-serviço
+  Di: "#475569",      // slate dispensado
+  AUSENTE: "#92400e", // âmbar escuro
 };
 
 /** Cor de texto da coluna do militar na grade: Roxo = COM ESPRAC/SRAK; Laranja = SEM. */
@@ -262,11 +352,12 @@ export function corHabilitacaoIN(m: Militar, data: ISODate): "habilitado" | "sem
   return semHabilitacao ? "sem_habilitacao" : "habilitado";
 }
 
-/** Postos de praças (Cabo e abaixo) para a regra de Cabo Volante. */
 const POSTOS_PRACAS: Posto[] = ["CB", "MN"];
 
 export interface CelulaSOMOR {
   sigla: SiglaCelula;
+  /** Legenda Oficial da Capitania (X, O, Fe/C, D, Fo, Li, Nº, Di). */
+  legendaOficial: LegendaOficialCapitania | null;
   /** Texto da ausência (subtipo do afastamento). */
   textoAusencia?: string;
   /** Categoria original do afastamento para tooltip. */
@@ -279,20 +370,10 @@ export interface CelulaSOMOR {
 
 export interface LinhaGradeSOMOR {
   militar: Militar;
-  /** Indicador de habilitação para Inspeção Naval na data de início do mês. */
   habilitacaoIN: "habilitado" | "sem_habilitacao";
-  /** Uma célula por dia do mês. */
   celulas: CelulaSOMOR[];
 }
 
-/**
- * Gera a Grade Mensal Padrão SOMOR para uma escala específica.
- * @param ctx        Contexto indexado (disponibilidade)
- * @param escalaId   Tipo de escala alvo (ex.: "CONTRAMESTRE")
- * @param ano        Ano do mês
- * @param mes0       Mês base-0 (0 = janeiro)
- * @param permitirCaboVolante  Quando true, Cabos cobrem lacunas de Marinheiros em 1×1.
- */
 export function gerarGradeSOMOR(
   ctx: Contexto,
   escalaId: EscalaConfig["id"],
@@ -309,34 +390,29 @@ export function gerarGradeSOMOR(
   const totalDias = diasNoMes(ano, mes0);
   const dias: ISODate[] = Array.from({ length: totalDias }, (_, i) => addDays(inicioMesISO, i));
 
-  // Cabeçalhos (linha fixa topo)
   const cabecalhos = dias.map((d) => {
     const ds = diaSemana(d);
     return { data: d, diaSemCurto: DIAS_SEMANA_CURTOS[ds], numDia: Number(d.slice(8, 10)), fds: ds === 0 || ds === 6 };
   });
 
-  // Obter efetivo da escala selecionada
   const escala = ctx.db.escalas.find((e) => e.id === escalaId);
   if (!escala) return { linhas: [], cabecalhos, alertas0x0: [], alertasINSemHabilitacao: [] };
 
   const pool = efetivoEscala(ctx, escala);
 
-  // Gerar serviços do mês via motor justo
-  const servicos = gerarEscala(ctx, escala, inicioMesISO, dias[dias.length - 1]);
+  // Gerar desde D-1 para identificar quem está SSVÇ no dia 1 do mês
+  const servicos = gerarEscala(ctx, escala, addDays(inicioMesISO, -1), dias[dias.length - 1]);
   const servicoMap = new Map(servicos.map((s) => [s.data, s]));
 
-  // Gerar serviços IN do mês (para detector 0×0)
   const escalaIN = ctx.db.escalas.find((e) => e.id === "INSPECAO_NAVAL");
   const servicosIN = escalaIN ? gerarEscala(ctx, escalaIN, inicioMesISO, dias[dias.length - 1]) : [];
   const inMap = new Map(servicosIN.map((s) => [s.data, s]));
 
-  // Cabos para regra de Cabo Volante
   const cabos = pool.filter((m) => POSTOS_PRACAS.includes(m.posto) && m.posto === "CB");
 
   const alertas0x0: { militarId: string; data: ISODate }[] = [];
   const alertasINSemHabilitacao: { data: ISODate; apenasSemHabilitacao: number }[] = [];
 
-  // ── Validação mínima IN: ao menos 2 habilitados por saída ──
   for (const s of servicosIN) {
     const escaladosIN = s.militarIds;
     const semHab = escaladosIN.filter((id) => {
@@ -352,12 +428,22 @@ export function gerarGradeSOMOR(
   const linhas: LinhaGradeSOMOR[] = pool.map((m) => {
     const habilitacaoIN = corHabilitacaoIN(m, inicioMesISO);
     const celulas: CelulaSOMOR[] = dias.map((data) => {
+      const ontem = addDays(data, -1);
+      const servOntem = servicoMap.get(ontem);
+      const estavaDeServicoOntem = servOntem?.militarIds.includes(m.id) ?? false;
+
       // 1) Verificar afastamentos ativos
       const afs = afastamentosNoDia(ctx, m.id, data).filter((a) => a.status !== "CANCELADO");
       if (afs.length > 0) {
         const af = afs[0];
+        let leg: LegendaOficialCapitania = "D";
+        if (af.categoria === "FERIAS" || af.categoria === "CURSO") leg = "Fe/C";
+        else if (af.categoria === "LICENCA") leg = "Li";
+        else if (af.categoria === "INSPECAO_NAVAL") leg = "O";
+        else if (af.categoria === "MISSAO") leg = "D";
         return {
           sigla: "AUSENTE",
+          legendaOficial: leg,
           textoAusencia: af.subtipo || af.titulo,
           categoriaAusencia: af.categoria,
         };
@@ -366,37 +452,41 @@ export function gerarGradeSOMOR(
       // 2) Verificar escala IN
       const servIN = inMap.get(data);
       if (servIN?.militarIds.includes(m.id)) {
-        // Detector 0×0: serviço anterior era CTR/MO e hoje seria folga, mas foi alocado em IN
-        const ontem = addDays(data, -1);
-        const servOntem = servicoMap.get(ontem);
-        const estavaDe0x0 = servOntem?.militarIds.includes(m.id) ?? false;
-        if (estavaDe0x0) {
+        if (estavaDeServicoOntem) {
           alertas0x0.push({ militarId: m.id, data });
         }
-        return { sigla: "IN", alerta0x0: estavaDe0x0 };
+        return { sigla: "IN", legendaOficial: "O", alerta0x0: estavaDeServicoOntem };
       }
 
       // 3) Verificar serviço da escala atual
       const servico = servicoMap.get(data);
       if (servico?.militarIds.includes(m.id)) {
-        const siglaPorEscala: Record<string, SiglaCelula> = {
-          CONTRAMESTRE: "CTR",
-          MOTORISTA:    "MO",
-          VIGIA:        "VG",
-          INSPECAO_NAVAL: "IN",
+        const ehQuarto = escalaId === "VIGIA" || escalaId === "CABO_AUXILIAR";
+        return {
+          sigla: siglaPorEscala(escalaId),
+          legendaOficial: ehQuarto ? "Nº" : "X",
         };
-        return { sigla: siglaPorEscala[escalaId] ?? "CTR" };
       }
 
       // 4) Cabo Volante: CB cobre MN em 1×1
       if (permitirCaboVolante && m.posto === "CB") {
         const servMN = servicoMap.get(data);
         if (servMN && servMN.lacunas > 0 && cabos.some((c) => c.id === m.id)) {
-          return { sigla: siglaPorEscala(escalaId), caboVolante: true };
+          return { sigla: siglaPorEscala(escalaId), legendaOficial: "Nº", caboVolante: true };
         }
       }
 
-      return { sigla: null };
+      // 5) Saindo de Serviço (SSVÇ / Folga Fo)
+      if (estavaDeServicoOntem) {
+        return { sigla: "SSVÇ", legendaOficial: "Fo" };
+      }
+
+      // 6) Dispensado da Escala (OI 02-06D)
+      if (m.dispensaEscala && m.dispensaEscala !== "NENHUMA" && m.dispensaEscala !== "RESTRICAO_MEDICA_PARCIAL") {
+        return { sigla: "Di", legendaOficial: "Di", textoAusencia: MOTIVO_DISPENSA_LABEL[m.dispensaEscala] };
+      }
+
+      return { sigla: null, legendaOficial: null };
     });
 
     return { militar: m, habilitacaoIN, celulas };
@@ -405,12 +495,306 @@ export function gerarGradeSOMOR(
   return { linhas, cabecalhos, alertas0x0, alertasINSemHabilitacao };
 }
 
-/** Helper local para Cabo Volante sem poluir o escopo externo. */
-function siglaPorEscala(id: string): SiglaCelula {
-  const map: Record<string, SiglaCelula> = {
-    CONTRAMESTRE: "CTR", MOTORISTA: "MO", VIGIA: "VG", INSPECAO_NAVAL: "IN",
+function siglaPorEscala(id: EscalaTipo): SiglaCelula {
+  const map: Record<EscalaTipo, SiglaCelula> = {
+    OSE: "OSE",
+    SUPERVISOR_SECOM: "SECOM",
+    CONTRAMESTRE: "CTR",
+    CABO_AUXILIAR: "CB-AUX",
+    MOTORISTA: "MO",
+    VIGIA: "VG",
+    IDENTIFICADOR: "IDENT",
+    INSPECAO_NAVAL: "IN",
   };
   return map[id] ?? "CTR";
+}
+
+/* ================================================================== */
+/* DETALHE DIÁRIO DE SERVIÇO OI 02-06D + GRUPO CAV & REAÇÃO           */
+/* ================================================================== */
+
+export interface ResultadoDetalheDiarioOI0206D {
+  data: ISODate;
+  ehDomingoOuFeriado: boolean;
+  itens: ItemEscalaDia[];
+  detalheEmergencia: DetalheEmergenciaDia;
+  alertasSegurancaEscala: string[];
+}
+
+export function gerarDetalheDiarioOI0206D(ctx: Contexto, data: ISODate): ResultadoDetalheDiarioOI0206D {
+  const ehDomingoOuFeriado = isFimDeSemana(data);
+  const postosOrdem: EscalaTipo[] = [
+    "OSE",
+    "CONTRAMESTRE",
+    "SUPERVISOR_SECOM",
+    "CABO_AUXILIAR",
+    "MOTORISTA",
+    "VIGIA",
+    "IDENTIFICADOR",
+  ];
+
+  const itens: ItemEscalaDia[] = [];
+  const alertasSegurancaEscala: string[] = [];
+
+  const pontosTitular = ehDomingoOuFeriado
+    ? REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.TITULAR
+    : REGRAS_PONTUACAO_OI_02_06D.NORMAL.TITULAR;
+
+  const pontosRetem = ehDomingoOuFeriado
+    ? REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.RETEM
+    : REGRAS_PONTUACAO_OI_02_06D.NORMAL.RETEM;
+
+  for (const posto of postosOrdem) {
+    const cfg = ctx.db.escalas.find((e) => e.id === posto);
+    if (!cfg) continue;
+    const servicos = gerarEscala(ctx, cfg, data, data);
+    const servDia = servicos[0];
+    const titularId = servDia?.militarIds[0] ?? "";
+    const retemId = servDia?.retemId;
+
+    if (servDia && servDia.cobertura.aptos <= REGRAS_PONTUACAO_OI_02_06D.LIMITE_SEGURANCA_REINTEGRACAO_DISPENSADOS.GERAL + 1) {
+      alertasSegurancaEscala.push(
+        `Alerta OI 02-06D [${cfg.nome}]: Apenas ${servDia.cobertura.aptos} militares aptos. Avaliar reintegração temporária de dispensados (Mestre, Sargenteante, Fiel) mediante autorização do Capitão dos Portos.`,
+      );
+    }
+
+    if (titularId) {
+      itens.push({
+        posto,
+        militarTitularId: titularId,
+        militarRetemId: retemId,
+        pontosCreditadosTitular: pontosTitular,
+        pontosCreditadosRetem: retemId ? pontosRetem : 0,
+      });
+    } else {
+      alertasSegurancaEscala.push(`CRÍTICO: Posto ${cfg.nome} sem titular habilitado em ${data}.`);
+    }
+  }
+
+  const buscarTitular = (p: EscalaTipo) =>
+    itens.find((i) => i.posto === p)?.militarTitularId ?? "";
+
+  const detalheEmergencia: DetalheEmergenciaDia = {
+    grupoCav: {
+      encarregadoId: buscarTitular("CONTRAMESTRE") || buscarTitular("OSE"),
+      desligadorEletricoId: buscarTitular("SUPERVISOR_SECOM"),
+      bombeiro1Id: buscarTitular("CABO_AUXILIAR"),
+      bombeiro2Id: buscarTitular("MOTORISTA"),
+      isolamentoPrimeirosSocorrosId: buscarTitular("IDENTIFICADOR"),
+    },
+    grupoReacao: {
+      comandanteId: buscarTitular("OSE"),
+      pontoSensivelEscoteriaId: buscarTitular("CONTRAMESTRE"),
+      pontoSensivelCp01Id: buscarTitular("VIGIA"),
+      pontoSensivelFrenteGapId: buscarTitular("CABO_AUXILIAR"),
+      pontoSensivelAlojamentosId: buscarTitular("IDENTIFICADOR"),
+    },
+    checklistOperacional: {
+      vistoriaHorariaLanchas: true,
+      escutaCanal16Vhf: true,
+      conferenciaArmamentoMunicao: true,
+    },
+  };
+
+  return {
+    data,
+    ehDomingoOuFeriado,
+    itens,
+    detalheEmergencia,
+    alertasSegurancaEscala,
+  };
+}
+
+/* ================================================================== */
+/* FOLHA DIÁRIA DE PRESENÇA E REGRESSO (4 TEMPOS)                     */
+/* Precedência estrita de 4 níveis (Análise Técnica Gemini):          */
+/* 1º Afastamento Total (Férias, LTS, LTSPF, Mutirum, Aula EPM) -> XXXX*/
+/* 2º Entrando de Serviço 24h no dia ou Motorista de Serviço          */
+/* 3º Saindo de Serviço 24h (escalado em D-1) -> SSVÇ | X | X | X     */
+/* 4º Alocação Operacional Diária (IN 06:30–16:00 ou Faina parcial)   */
+/* ================================================================== */
+
+export function gerarFolhaPresencaDia(ctx: Contexto, data: ISODate): LinhaFolhaPresenca[] {
+  const ontem = addDays(data, -1);
+  const regressoGeralAtivo = ctx.db.parametros.regressoGeralAtivo ?? false;
+
+  // Mapear quem está entrando de serviço hoje (D) e quem entrou ontem (D-1)
+  const entrandoHoje = new Map<string, EscalaTipo>();
+  const saindoHoje = new Map<string, EscalaTipo>();
+
+  for (const esc of ctx.db.escalas) {
+    if (esc.id === "INSPECAO_NAVAL") continue;
+    const servs = gerarEscala(ctx, esc, ontem, data);
+    const sOntem = servs.find((s) => s.data === ontem);
+    const sHoje = servs.find((s) => s.data === data);
+
+    for (const mid of sOntem?.militarIds ?? []) {
+      saindoHoje.set(mid, esc.id);
+    }
+    for (const mid of sHoje?.militarIds ?? []) {
+      entrandoHoje.set(mid, esc.id);
+    }
+  }
+
+  return ctx.militares.map((m): LinhaFolhaPresenca => {
+    const incumbenciasAcumuladas = obterIncumbenciasAcumuladas(ctx, m.id, data).map((inc) => ({
+      titularNome: inc.titularNome,
+      incumbencia: inc.incumbencia,
+      motivo: inc.motivo,
+    }));
+
+    const afs = afastamentosNoDia(ctx, m.id, data).filter((a) => a.status !== "CANCELADO");
+
+    // ── NÍVEL 1: Afastamento Total (Férias, LTS, LTSPF, Missão Externa, Aula EPM, Instalação) ──
+    const afTotal = afs.find(
+      (a) =>
+        a.categoria === "FERIAS" ||
+        a.categoria === "LICENCA" ||
+        a.categoria === "MISSAO" ||
+        a.categoria === "CURSO" ||
+        a.categoria === "DISPENSA" ||
+        (a.categoria === "INSPECAO_NAVAL" && !a.horarioEspecifico && a.inicio < a.fim),
+    );
+
+    if (afTotal) {
+      // Caso especial: lançou manualmente SSVÇ como dispensa
+      if (afTotal.subtipo.includes("SSVÇ")) {
+        return {
+          militarId: m.id,
+          data,
+          tempo1: "SSVÇ",
+          tempo2: "X",
+          tempo3: "X",
+          tempo4: "X",
+          statusObservacao: afTotal.titulo.toUpperCase(),
+          codigo: "SSVÇ",
+          prioridadeAplicada: 3,
+          bloqueadoPorEscalaOuAusencia: true,
+          incumbenciasAcumuladas,
+        };
+      }
+      return {
+        militarId: m.id,
+        data,
+        tempo1: "X",
+        tempo2: "X",
+        tempo3: "X",
+        tempo4: "X",
+        statusObservacao: (afTotal.subtipo || afTotal.titulo).toUpperCase(),
+        codigo: "X",
+        prioridadeAplicada: 1,
+        bloqueadoPorEscalaOuAusencia: true,
+        incumbenciasAcumuladas,
+      };
+    }
+
+    // ── NÍVEL 2: Entrando de Serviço 24h hoje ou Motorista de Serviço ──
+    const postoHoje = entrandoHoje.get(m.id);
+    if (postoHoje) {
+      if (postoHoje === "MOTORISTA") {
+        const h = HORARIOS_PADRAO_4_TEMPOS.MOTORISTA_SERVICO;
+        return {
+          militarId: m.id,
+          data,
+          tempo1: h.t1,
+          tempo2: h.t2,
+          tempo3: h.t3,
+          tempo4: h.t4,
+          statusObservacao: "MOTORISTA DE SERVIÇO",
+          codigo: "MO",
+          prioridadeAplicada: 2,
+          bloqueadoPorEscalaOuAusencia: true,
+          incumbenciasAcumuladas,
+        };
+      }
+      const h = HORARIOS_PADRAO_4_TEMPOS.SERVICO_ESTADO;
+      return {
+        militarId: m.id,
+        data,
+        tempo1: h.t1,
+        tempo2: h.t2,
+        tempo3: h.t3,
+        tempo4: h.t4,
+        statusObservacao: `ENTRANDO DE SERVIÇO (${postoHoje})`,
+        codigo: "SVÇ",
+        prioridadeAplicada: 2,
+        bloqueadoPorEscalaOuAusencia: true,
+        incumbenciasAcumuladas,
+      };
+    }
+
+    // ── NÍVEL 3: Saindo de Serviço 24h (escalado em D-1) ──
+    const postoOntem = saindoHoje.get(m.id);
+    if (postoOntem && postoOntem !== "MOTORISTA" && !regressoGeralAtivo) {
+      const h = HORARIOS_PADRAO_4_TEMPOS.SAINDO_SERVICO;
+      return {
+        militarId: m.id,
+        data,
+        tempo1: h.t1,
+        tempo2: h.t2,
+        tempo3: h.t3,
+        tempo4: h.t4,
+        statusObservacao: `${postoOntem} SAINDO DE SVÇ`,
+        codigo: "SSVÇ",
+        prioridadeAplicada: 3,
+        bloqueadoPorEscalaOuAusencia: true,
+        incumbenciasAcumuladas,
+      };
+    }
+
+    // ── NÍVEL 4: Alocação Operacional Diária (Inspeção Naval Diária ou Faina / Apoio) ──
+    const afDiario = afs[0];
+    if (afDiario) {
+      if (afDiario.categoria === "INSPECAO_NAVAL") {
+        const h = afDiario.horarioEspecifico ?? HORARIOS_PADRAO_4_TEMPOS.INSPECAO_NAVAL;
+        return {
+          militarId: m.id,
+          data,
+          tempo1: h.t1,
+          tempo2: h.t2,
+          tempo3: h.t3,
+          tempo4: h.t4,
+          statusObservacao: "INSPEÇÃO NAVAL",
+          codigo: "IN",
+          prioridadeAplicada: 4,
+          bloqueadoPorEscalaOuAusencia: false,
+          incumbenciasAcumuladas,
+        };
+      }
+      const h = afDiario.horarioEspecifico ?? HORARIOS_PADRAO_4_TEMPOS.EXPEDIENTE_NORMAL;
+      return {
+        militarId: m.id,
+        data,
+        tempo1: h.t1,
+        tempo2: h.t2,
+        tempo3: h.t3,
+        tempo4: h.t4,
+        statusObservacao: afDiario.titulo.toUpperCase(),
+        codigo: "FAINA",
+        prioridadeAplicada: 4,
+        bloqueadoPorEscalaOuAusencia: false,
+        incumbenciasAcumuladas,
+      };
+    }
+
+    // ── NÍVEL 5: Expediente Normal de Bordo ──
+    const h = HORARIOS_PADRAO_4_TEMPOS.EXPEDIENTE_NORMAL;
+    return {
+      militarId: m.id,
+      data,
+      tempo1: regressoGeralAtivo ? "07:00" : h.t1,
+      tempo2: h.t2,
+      tempo3: h.t3,
+      tempo4: h.t4,
+      statusObservacao: m.setorCodigo === "CF-09" && m.funcao?.includes("Supervisor")
+        ? "EXPEDIENTE / SUPERVISOR DA SECOM"
+        : `EXPEDIENTE NORMAL (${m.setorCodigo ?? m.divisao})`,
+      codigo: "PRESENTE",
+      prioridadeAplicada: 5,
+      bloqueadoPorEscalaOuAusencia: false,
+      incumbenciasAcumuladas,
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -424,14 +808,9 @@ export interface SimulacaoEfetivo {
   regimeSimulado: number;
   statusAtual: StatusCobertura;
   statusSimulado: StatusCobertura;
-  /** Diferença de militares aptos entre cenário atual e simulado. */
   deltaAptos: number;
 }
 
-/**
- * Simula o impacto de remover `nAfastados` militares adicionais de uma escala
- * na data informada (ex.: "3 Contramestres em missão vs. 2 + alarme CFTV").
- */
 export function simularImpactoEfetivo(
   ctx: Contexto,
   data: ISODate,
@@ -442,7 +821,6 @@ export function simularImpactoEfetivo(
   const pool = efetivoEscala(ctx, escala);
   const cobAtual = coberturaDia(ctx, escala, data, pool);
 
-  // Simula removendo os primeiros N militares aptos da pool
   const aptosAtuais = pool.filter((m) => !cobAtual.indisponiveis.some((i) => i.militarId === m.id));
   const poolSim = pool.filter((m) => !aptosAtuais.slice(0, nAfastarAdicional).some((a) => a.id === m.id));
   const cobSim = coberturaDia(ctx, escala, data, poolSim);

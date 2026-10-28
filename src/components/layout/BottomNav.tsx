@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  ShieldCheck,
   FileSpreadsheet,
   CalendarCheck,
   CalendarDays,
@@ -17,6 +18,7 @@ export function BottomNav() {
 
   const items = [
     { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
+    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
     { href: "/lancamentos", label: "Lançar", icone: FileSpreadsheet },
     { href: "/escalas", label: "Escalas", icone: CalendarCheck },
     { href: "/ferias", label: "Férias", icone: CalendarDays },

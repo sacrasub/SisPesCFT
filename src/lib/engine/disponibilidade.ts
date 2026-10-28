@@ -1,5 +1,6 @@
-import { PRIORIDADE_CATEGORIA, RESTRICAO_META, CATEGORIA_META } from "../constants";
+import { PRIORIDADE_CATEGORIA, RESTRICAO_META, CATEGORIA_META, MOTIVO_DISPENSA_LABEL } from "../constants";
 import { within } from "../dates";
+import { nomeMilitar } from "../utils";
 import type {
   Afastamento,
   AfastamentoCategoria,
@@ -51,7 +52,9 @@ export function criarContexto(db: Database, opts: OpcoesContexto = {}): Contexto
 /* ------------------------------------------------------------------ */
 
 export function afastamentosNoDia(ctx: Contexto, militarId: string, data: ISODate): Afastamento[] {
-  return (ctx.porMilitar.get(militarId) ?? []).filter((a) => a.inicio <= data && data <= a.fim);
+  return (ctx.porMilitar.get(militarId) ?? []).filter(
+    (a) => a.inicio <= data && (a.terminoAsd || data <= a.fim),
+  );
 }
 
 const prioridade = (c: AfastamentoCategoria) => PRIORIDADE_CATEGORIA.indexOf(c);
@@ -92,6 +95,45 @@ export function indisponibilidadeEscala(
   escala: EscalaConfig,
   data: ISODate,
 ): Indisponibilidade | null {
+  // 1. Verificar dispensa regulamentar OI 02-06D
+  if (m.dispensaEscala && m.dispensaEscala !== "NENHUMA") {
+    if (m.dispensaEscala === "RESTRICAO_MEDICA_PARCIAL" || m.restricaoMedicaArmadoOuEmPe) {
+      const ehSg = ["1SG", "2SG", "3SG"].includes(m.posto);
+      const ehCbMn = ["CB", "MN"].includes(m.posto);
+      if (ehSg && escala.id !== "SUPERVISOR_SECOM") {
+        return {
+          militarId: m.id,
+          tipo: "RESTRICAO",
+          motivo: "Restrição Médica Parcial (OI 02-06D): redirecionar para Supervisor SECOM",
+        };
+      }
+      if (ehCbMn && escala.id !== "IDENTIFICADOR") {
+        return {
+          militarId: m.id,
+          tipo: "RESTRICAO",
+          motivo: "Restrição Médica Parcial (OI 02-06D): redirecionar para Identificador",
+        };
+      }
+    } else if (escala.id !== "INSPECAO_NAVAL") {
+      return {
+        militarId: m.id,
+        tipo: "RESTRICAO",
+        motivo: `Dispensado (OI 02-06D): ${MOTIVO_DISPENSA_LABEL[m.dispensaEscala]}`,
+      };
+    }
+  }
+
+  // 2. Verificar Trava de Papeleta de Qualificação OI 02-06D (se configurada para o posto)
+  const qual = m.qualificacoesServico?.find((q) => q.posto === escala.id);
+  if (qual && (!qual.papeletaConcluida || qual.servicosPraticosAcompanhados < 3 || !qual.numeroOsPublicacao)) {
+    return {
+      militarId: m.id,
+      tipo: "RESTRICAO",
+      motivo: `Trava OI 02-06D: Papeleta pendente (${qual.servicosPraticosAcompanhados}/3 svç práticos | OS: ${qual.numeroOsPublicacao ?? "Pendente"})`,
+    };
+  }
+
+  // 3. Verificar restrições bloqueantes na data
   const bloqueio = restricoesAtivas(m, data).find((r) => escala.restricoesBloqueantes.includes(r.tipo));
   if (bloqueio) {
     return {
@@ -100,6 +142,8 @@ export function indisponibilidadeEscala(
       motivo: RESTRICAO_META[bloqueio.tipo].label + (bloqueio.descricao ? ` – ${bloqueio.descricao}` : ""),
     };
   }
+
+  // 4. Verificar afastamentos que impactam escala
   const considerarPrevistos = ctx.db.parametros.considerarPrevistos;
   const af = afastamentosNoDia(ctx, m.id, data)
     .filter((a) => a.impactaEscala && (considerarPrevistos || a.status === "CONFIRMADO"))
@@ -113,6 +157,55 @@ export function indisponibilidadeEscala(
     };
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trava de Paiol / Incumbência Órfã ("Acumulando Incumbência")       */
+/* ------------------------------------------------------------------ */
+
+export interface IncumbenciaAcumuladaInfo {
+  titularId: string;
+  titularNome: string;
+  incumbencia: string;
+  motivo: string;
+  terminoAsd?: boolean;
+  afastamentoId: string;
+}
+
+/**
+ * Retorna os paióis/compartimentos/encargos que o militar está acumulando na data
+ * por ter sido escalado como `militarSubstitutoId` de um militar afastado.
+ */
+export function obterIncumbenciasAcumuladas(
+  ctx: Contexto,
+  militarSubstitutoId: string,
+  data: ISODate,
+): IncumbenciaAcumuladaInfo[] {
+  const out: IncumbenciaAcumuladaInfo[] = [];
+  for (const af of ctx.db.afastamentos) {
+    if (af.status === "CANCELADO") continue;
+    if (af.militarSubstitutoId !== militarSubstitutoId) continue;
+    if (af.inicio <= data && (af.terminoAsd || data <= af.fim)) {
+      for (const tid of af.militarIds) {
+        const titular = ctx.militarMap.get(tid);
+        if (!titular) continue;
+        const listaInc = titular.incumbencias?.length
+          ? titular.incumbencias
+          : [titular.funcao || titular.funcaoPrincipal || `Setor ${titular.setorCodigo ?? titular.divisao}`];
+        for (const inc of listaInc) {
+          out.push({
+            titularId: titular.id,
+            titularNome: nomeMilitar(titular),
+            incumbencia: inc,
+            motivo: af.subtipo || af.titulo,
+            terminoAsd: af.terminoAsd,
+            afastamentoId: af.id,
+          });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
