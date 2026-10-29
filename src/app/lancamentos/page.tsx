@@ -41,6 +41,7 @@ import {
   Trash2,
   Sparkles,
   Info,
+  Link2,
 } from "lucide-react";
 import type {
   Afastamento,
@@ -408,7 +409,7 @@ export default function LancamentosPage() {
         ) : (
           lancamentosFiltrados.map((item) => {
             const dias = duracaoDias(item.inicio, item.fim);
-            const podeEditar = podeEditarLancamento(usuario, item);
+            const podeEditar = podeEditarLancamento(usuario, item) && !item.somenteLeitura;
 
             return (
               <div
@@ -421,6 +422,15 @@ export default function LancamentosPage() {
                     <DivisaoBadge divisao={item.divisao} />
                     <CategoriaBadge categoria={item.categoria} />
                     <StatusLancamentoBadge status={item.status} />
+                    {item.somenteLeitura && (
+                      <span
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 flex items-center gap-1"
+                        title="Missão originada no Sistema da Capitania Itinerante"
+                      >
+                        <Link2 className="w-3 h-3" />
+                        <span>Itinerante{item.codigoMissaoExterna ? ` • ${item.codigoMissaoExterna}` : ""}</span>
+                      </span>
+                    )}
                     {item.impactaEscala ? (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/20">
                         Impacta Escala
@@ -506,6 +516,13 @@ export default function LancamentosPage() {
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {item.somenteLeitura && (
+                      <span className="text-[11px] font-semibold text-sky-400 bg-sky-950/50 border border-sky-800/50 px-2.5 py-1 rounded-xl flex items-center gap-1.5" title="Gerenciado pelo Sistema da Capitania Itinerante">
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>Gestão Itinerante</span>
+                      </span>
+                    )}
+
                     {/* Botão de Confirmar/Alternar Status */}
                     {podeEditar && (
                       <button

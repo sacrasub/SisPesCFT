@@ -489,6 +489,102 @@ teste("8. Migração segura por NIP (v2/v3 → v4) e Papeleta de Troca (48h + 4 
 });
 
 /* ------------------------------------------------------------------ */
+/* TESTE 9 — Integração Banco Único CFT (Mappers, NIP e Itinerante)   */
+/* ------------------------------------------------------------------ */
+
+teste("9. Banco Único CFT (Mappers NIP, 3SG Robson e Missões Itinerante EPM/STA)", () => {
+  const { militarParaLinha, linhaParaMilitar, normalizarPosto } = require("../src/lib/repository/militaresMapper");
+  const { missoesParaAfastamentos } = require("../src/lib/repository/missoesMapper");
+
+  const db = novoDb();
+
+  // 1. Verificação do NIP oficial do 3SG Robson
+  const robson = db.militares.find((m) => m.nomeGuerra === "ROBSON")!;
+  check(robson !== undefined, "3SG Robson não encontrado no efetivo");
+  check(robson?.nip === "15.0178.93", `NIP do 3SG Robson divergente: esperado 15.0178.93, obtido ${robson?.nip}`);
+
+  // 2. Normalização de postos
+  check(normalizarPosto("3ºSG") === "3SG", "Normalização 3ºSG -> 3SG falhou");
+  check(normalizarPosto("SO-CI") === "SO", "Normalização SO-CI -> SO falhou");
+  check(normalizarPosto("1SG-MR") === "1SG", "Normalização 1SG-MR -> 1SG falhou");
+  check(normalizarPosto("2SG-MO") === "2SG", "Normalização 2SG-MO -> 2SG falhou");
+  check(normalizarPosto("CC") === "CC", "Normalização CC falhou");
+
+  // 3. Roundtrip completo Militar -> Linha Supabase -> Militar (64 militares)
+  let roundtripOk = true;
+  for (const m of db.militares) {
+    const linha = militarParaLinha(m);
+    const recriado = linhaParaMilitar(linha);
+    if (
+      recriado.nip !== m.nip ||
+      recriado.posto !== m.posto ||
+      recriado.nomeGuerra !== m.nomeGuerra ||
+      recriado.id !== m.id ||
+      recriado.divisao !== m.divisao
+    ) {
+      roundtripOk = false;
+      break;
+    }
+  }
+  check(roundtripOk, "Roundtrip Militar -> Linha Supabase -> Militar falhou em algum militar");
+
+  // 4. Mapeamento de Missões Itinerante para Afastamentos
+  const missaoExemplo = {
+    id: "mis-uuid-123",
+    codigo: "MIS-2026-11-SAI",
+    nome: "Comissão EPM e STA Santo Antônio do Içá",
+    data_inicio: "2026-11-10",
+    data_fim: "2026-11-20",
+    origem: "Tabatinga",
+    itinerario: ["Tabatinga", "Santo Antônio do Içá"],
+    status: "EM_ANDAMENTO",
+  };
+
+  const equipeExemplo = [
+    {
+      id: "mm-1",
+      missao_id: "mis-uuid-123",
+      nip: robson.nip,
+      funcao_comissao: "Instrutor EPM",
+    },
+    {
+      id: "mm-2",
+      missao_id: "mis-uuid-123",
+      nip: "99.9999.99", // NIP inexistente
+      funcao_comissao: "Apoio",
+    },
+  ];
+
+  const afastamentos = missoesParaAfastamentos([missaoExemplo], equipeExemplo, db.militares);
+  check(afastamentos.length === 1, `Esperado 1 afastamento de missão, obtido ${afastamentos.length}`);
+
+  const afM = afastamentos[0];
+  check(afM.militarIds.includes(robson.id), "3SG Robson não incluído no afastamento da missão");
+  check(!afM.militarIds.includes("99.9999.99"), "NIP inexistente incluído indevidamente");
+  check(afM.impactaEscala === true, "Missão não está marcada com impactaEscala: true");
+  check(afM.somenteLeitura === true, "Missão não está marcada com somenteLeitura: true");
+  check(afM.origem === "ITINERANTE", "Origem da missão não é ITINERANTE");
+
+  // 5. Missão cancelada não gera afastamento
+  const missaoCancelada = { ...missaoExemplo, id: "mis-cancel", status: "CANCELADA" };
+  const afCancelados = missoesParaAfastamentos([missaoCancelada], equipeExemplo, db.militares);
+  check(afCancelados.length === 0, "Missão cancelada gerou afastamento indevidamente");
+
+  // 6. Impacto real da missão no motor de escalas
+  const dbComMissao = clone(db);
+  dbComMissao.afastamentos.push({
+    ...afM,
+    inicio: HOJE,
+    fim: addDays(HOJE, 5),
+  });
+  const ctxMissao = ctxDe(dbComMissao);
+  const escCtr = escalaDe(dbComMissao, "CONTRAMESTRE");
+  const indisp = indisponibilidadeEscala(ctxMissao, robson, escCtr, HOJE);
+  check(indisp !== null, "Militar em missão itinerante não ficou indisponível na escala");
+  check(indisp?.tipo === "MISSAO", `Tipo de indisponibilidade inesperado: ${indisp?.tipo}`);
+});
+
+/* ------------------------------------------------------------------ */
 const aprovados = resultados.filter((r) => r.ok).length;
 const totalChecks = resultados.reduce((s, r) => s + r.checks, 0);
 console.log(`\nResultado: ${aprovados}/${resultados.length} testes aprovados — ${totalChecks} verificações executadas.\n`);

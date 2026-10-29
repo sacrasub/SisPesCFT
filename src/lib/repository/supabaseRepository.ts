@@ -1,22 +1,44 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { criarSeed, DB_VERSION } from "../seed";
-import type { CollectionItem, CollectionKey, Database, Parametros } from "../types";
-import { COLLECTIONS, type DataRepository } from "./types";
+import type {
+  Afastamento,
+  CollectionItem,
+  CollectionKey,
+  Database,
+  Militar,
+  Parametros,
+} from "../types";
+import type { DataRepository } from "./types";
+import {
+  linhaParaMilitar,
+  militarParaLinha,
+  type MilitarSupabaseRow,
+} from "./militaresMapper";
+import {
+  missoesParaAfastamentos,
+  type MissaoMilitarSupabaseRow,
+  type MissaoSupabaseRow,
+} from "./missoesMapper";
 
 /**
- * Persistência multiusuário via Supabase (Postgres + Realtime).
- * Cada coleção é uma tabela com (id text PK, data jsonb, updated_at timestamptz).
- * Usamos o prefixo `sispes_` para total isolamento, permitindo coexistir
- * com outros sistemas da Capitania (ex.: cft-itinerante) no mesmo banco.
+ * Persistência multiusuário unificada via Supabase (PostgreSQL + Realtime).
+ *
+ * Arquitetura de Banco Único CFT:
+ * - `militares`: Cadastro mestre do efetivo compartilhado com o Sistema Itinerante (chave natural NIP).
+ * - `missoes` e `missao_militares`: Missões do EPM/STA geradas no Itinerante e refletidas como afastamentos no SisPes.
+ * - `sispes_*`: Coleções exclusivas do SisPesCFT (afastamentos locais, escalas, eventos, trocas e parâmetros).
  */
-const TABELA: Record<CollectionKey, string> = {
-  militares: "sispes_militares",
+const TABELAS_SISPES = {
   afastamentos: "sispes_afastamentos",
   escalas: "sispes_escalas",
   eventos: "sispes_eventos",
   trocasServico: "sispes_trocas_servico",
-};
+} as const;
+
 const TABELA_PARAMETROS = "sispes_parametros";
+const TABELA_MILITARES = "militares";
+const TABELA_MISSOES = "missoes";
+const TABELA_MISSAO_MILITARES = "missao_militares";
 
 export class SupabaseRepository implements DataRepository {
   readonly backend = "supabase" as const;
@@ -24,68 +46,196 @@ export class SupabaseRepository implements DataRepository {
   constructor(private client: SupabaseClient) {}
 
   async load(): Promise<Database> {
-    const results = await Promise.all(
-      COLLECTIONS.map((c) => this.client.from(TABELA[c]).select("data")),
-    );
-    const erro = results.find((r) => r.error)?.error;
-    if (erro) {
+    // 1. Carrega o efetivo mestre compartilhado
+    const resMilitares = await this.client
+      .from(TABELA_MILITARES)
+      .select("*")
+      .is("excluido_em", null);
+
+    if (resMilitares.error) {
+      const err = resMilitares.error;
       if (
-        erro.message.includes("does not exist") ||
-        erro.code === "42P01" ||
-        erro.message.includes("relation")
+        err.message.includes("does not exist") ||
+        err.code === "42P01" ||
+        err.message.includes("relation") ||
+        err.message.includes("sispes_")
       ) {
         throw new Error(
-          `As tabelas do SisPesCFT ainda não foram criadas no Supabase (Código 42P01). Execute o script 'supabase/schema.sql' no SQL Editor do Supabase.`
+          `As tabelas do SisPesCFT ainda não foram criadas no Supabase. Execute o script 'supabase/migrations/001_banco_unico_cft.sql' no SQL Editor.`
         );
       }
-      throw new Error(`Supabase: ${erro.message}`);
+      throw new Error(`Supabase (militares): ${err.message}`);
     }
 
-    const params = await this.client
+    // 2. Carrega as coleções exclusivas do SisPesCFT
+    const chavesSispes = Object.keys(TABELAS_SISPES) as (keyof typeof TABELAS_SISPES)[];
+    const resultsSispes = await Promise.all(
+      chavesSispes.map((c) => this.client.from(TABELAS_SISPES[c]).select("data")),
+    );
+
+    const erroSispes = resultsSispes.find((r) => r.error)?.error;
+    if (erroSispes) {
+      if (
+        erroSispes.message.includes("does not exist") ||
+        erroSispes.code === "42P01" ||
+        erroSispes.message.includes("relation")
+      ) {
+        throw new Error(
+          `Tabelas 'sispes_*' pendentes no Supabase. Execute 'supabase/migrations/001_banco_unico_cft.sql' no SQL Editor.`
+        );
+      }
+      throw new Error(`Supabase: ${erroSispes.message}`);
+    }
+
+    // 3. Carrega parâmetros
+    const resParams = await this.client
       .from(TABELA_PARAMETROS)
       .select("data")
       .eq("id", "default")
       .maybeSingle();
 
-    if (params.error && (params.error.code === "42P01" || params.error.message.includes("does not exist"))) {
+    if (
+      resParams.error &&
+      (resParams.error.code === "42P01" || resParams.error.message.includes("does not exist"))
+    ) {
       throw new Error(
-        `As tabelas do SisPesCFT ainda não foram criadas no Supabase. Execute o script 'supabase/schema.sql' no SQL Editor do Supabase.`
+        `Tabela 'sispes_parametros' pendente no Supabase. Execute 'supabase/migrations/001_banco_unico_cft.sql'.`
       );
     }
 
-    const [militares, afastamentos, escalas, eventos, trocasServico] = results.map(
+    // 4. Carrega missões operacionais do Sistema Itinerante (tolerante a falha)
+    let missoesRows: MissaoSupabaseRow[] = [];
+    let missaoMilitaresRows: MissaoMilitarSupabaseRow[] = [];
+    try {
+      const [resMis, resMmils] = await Promise.all([
+        this.client.from(TABELA_MISSOES).select("*").neq("status", "CANCELADA"),
+        this.client.from(TABELA_MISSAO_MILITARES).select("*"),
+      ]);
+      if (!resMis.error && Array.isArray(resMis.data)) {
+        missoesRows = resMis.data as MissaoSupabaseRow[];
+      }
+      if (!resMmils.error && Array.isArray(resMmils.data)) {
+        missaoMilitaresRows = resMmils.data as MissaoMilitarSupabaseRow[];
+      }
+    } catch (e) {
+      console.warn("[SisPesCFT] Aviso ao ler missões do Itinerante:", e);
+    }
+
+    // Converte militares relacionais para o modelo interno
+    const militaresDb: Militar[] = ((resMilitares.data ?? []) as MilitarSupabaseRow[]).map(
+      linhaParaMilitar,
+    );
+
+    // Converte as coleções JSONB do SisPesCFT
+    const [afastamentosData, escalasData, eventosData, trocasServicoData] = resultsSispes.map(
       (r) => (r.data ?? []).map((row) => row.data),
     );
 
-    // Base vazia: popula com a demonstração para facilitar a primeira implantação.
-    if (!militares.length && !escalas.length) {
+    const afastamentosProprios = (afastamentosData ?? []) as Afastamento[];
+    const escalas = (escalasData ?? []) as Database["escalas"];
+    const eventos = (eventosData ?? []) as Database["eventos"];
+    const trocasServico = (trocasServicoData ?? []) as Database["trocasServico"];
+
+    // Carga inicial se o banco estiver vazio
+    if (!militaresDb.length && !escalas.length) {
       const seed = criarSeed();
       await this.replaceAll(seed);
       return seed;
     }
 
+    // Mescla missões operacionais do Itinerante como afastamentos virtuais
+    const afastamentosItinerante = missoesParaAfastamentos(
+      missoesRows,
+      missaoMilitaresRows,
+      militaresDb,
+    );
+
+    // Evita duplicatas se algum afastamento com mesmo id já estiver salvo
+    const idsExistentes = new Set(afastamentosProprios.map((a) => a.id));
+    const afastamentosCompletos = [
+      ...afastamentosProprios,
+      ...afastamentosItinerante.filter((a) => !idsExistentes.has(a.id)),
+    ];
+
     return {
       version: DB_VERSION,
-      militares: militares ?? [],
-      afastamentos: afastamentos ?? [],
+      militares: militaresDb,
+      afastamentos: afastamentosCompletos,
       escalas: escalas ?? [],
       eventos: eventos ?? [],
       trocasServico: trocasServico ?? [],
-      parametros: (params.data?.data as Parametros) ?? criarSeed().parametros,
+      parametros: (resParams.data?.data as Parametros) ?? criarSeed().parametros,
       updatedAt: new Date().toISOString(),
     };
   }
 
   async upsert<K extends CollectionKey>(key: K, item: CollectionItem<K>): Promise<void> {
-    const { error } = await this.client
-      .from(TABELA[key])
-      .upsert({ id: item.id, data: item, updated_at: new Date().toISOString() });
-    if (error) throw new Error(error.message);
+    if (key === "militares") {
+      const m = item as unknown as Militar;
+      const linha = militarParaLinha(m);
+      const { error } = await this.client
+        .from(TABELA_MILITARES)
+        .upsert(linha, { onConflict: "nip" });
+      if (error) throw new Error(`Falha ao salvar militar: ${error.message}`);
+      return;
+    }
+
+    if (key === "afastamentos") {
+      const af = item as unknown as Afastamento;
+      if (af.somenteLeitura || af.origem === "ITINERANTE" || af.id.startsWith("itn:")) {
+        throw new Error(
+          "Este lançamento de missão pertence ao Sistema da Capitania Itinerante e deve ser editado por lá."
+        );
+      }
+      const { error } = await this.client
+        .from(TABELAS_SISPES.afastamentos)
+        .upsert({ id: af.id, data: af, updated_at: new Date().toISOString() });
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const tabela = TABELAS_SISPES[key as keyof typeof TABELAS_SISPES];
+    if (tabela) {
+      const { error } = await this.client
+        .from(tabela)
+        .upsert({ id: item.id, data: item, updated_at: new Date().toISOString() });
+      if (error) throw new Error(error.message);
+    }
   }
 
   async remove(key: CollectionKey, id: string): Promise<void> {
-    const { error } = await this.client.from(TABELA[key]).delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    if (key === "militares") {
+      // Exclusão lógica no cadastro mestre para preservar integridade histórica no Itinerante
+      const { error } = await this.client
+        .from(TABELA_MILITARES)
+        .update({
+          excluido_em: new Date().toISOString(),
+          ativo: 0,
+        })
+        .or(`sispes_id.eq.${id},nip.eq.${id}`);
+      if (error) throw new Error(`Falha ao remover militar: ${error.message}`);
+      return;
+    }
+
+    if (key === "afastamentos") {
+      if (id.startsWith("itn:")) {
+        throw new Error(
+          "Missões do Sistema Itinerante devem ser canceladas no próprio sistema de origem."
+        );
+      }
+      const { error } = await this.client
+        .from(TABELAS_SISPES.afastamentos)
+        .delete()
+        .eq("id", id);
+      if (error) throw new Error(error.message);
+      return;
+    }
+
+    const tabela = TABELAS_SISPES[key as keyof typeof TABELAS_SISPES];
+    if (tabela) {
+      const { error } = await this.client.from(tabela).delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    }
   }
 
   async saveParametros(p: Parametros): Promise<void> {
@@ -97,16 +247,38 @@ export class SupabaseRepository implements DataRepository {
 
   async replaceAll(db: Database): Promise<void> {
     const now = new Date().toISOString();
-    for (const c of COLLECTIONS) {
-      const del = await this.client.from(TABELA[c]).delete().neq("id", "");
+
+    // 1. Militares: Upsert de cada militar por NIP (sem drop da tabela compartilhada!)
+    for (const m of db.militares ?? []) {
+      const linha = militarParaLinha(m);
+      const { error } = await this.client
+        .from(TABELA_MILITARES)
+        .upsert(linha, { onConflict: "nip" });
+      if (error) {
+        console.warn(`[SisPesCFT] Upsert militar ${m.nip}:`, error.message);
+      }
+    }
+
+    // 2. Coleções exclusivas SisPesCFT: limpa e reescreve
+    const chavesSispes = Object.keys(TABELAS_SISPES) as (keyof typeof TABELAS_SISPES)[];
+    for (const c of chavesSispes) {
+      const tabela = TABELAS_SISPES[c];
+      const del = await this.client.from(tabela).delete().neq("id", "");
       if (del.error) throw new Error(del.error.message);
-      const items = (db[c] ?? []) as Array<{ id: string }>;
+
+      let items = (db[c] ?? []) as Array<{ id: string }>;
+      // Afastamentos virtuais de missões externas não devem ser persistidos em sispes_afastamentos
+      if (c === "afastamentos") {
+        items = (items as Afastamento[]).filter((a) => !a.id.startsWith("itn:"));
+      }
+
       const rows = items.map((item) => ({ id: item.id, data: item, updated_at: now }));
       if (rows.length) {
-        const ins = await this.client.from(TABELA[c]).insert(rows);
+        const ins = await this.client.from(tabela).insert(rows);
         if (ins.error) throw new Error(ins.error.message);
       }
     }
+
     await this.saveParametros(db.parametros);
   }
 
@@ -116,10 +288,21 @@ export class SupabaseRepository implements DataRepository {
       clearTimeout(timer);
       timer = setTimeout(onChange, 300);
     };
-    const channel = this.client.channel("sispescft-db");
-    for (const t of [...Object.values(TABELA), TABELA_PARAMETROS]) {
+
+    const channel = this.client.channel("sispescft-db-sync");
+
+    // Escuta alterações no cadastro de militares
+    channel.on("postgres_changes", { event: "*", schema: "public", table: TABELA_MILITARES }, debounced);
+
+    // Escuta alterações nas missões operacionais do Sistema Itinerante
+    channel.on("postgres_changes", { event: "*", schema: "public", table: TABELA_MISSOES }, debounced);
+    channel.on("postgres_changes", { event: "*", schema: "public", table: TABELA_MISSAO_MILITARES }, debounced);
+
+    // Escuta alterações nas tabelas exclusivas do SisPesCFT
+    for (const t of [...Object.values(TABELAS_SISPES), TABELA_PARAMETROS]) {
       channel.on("postgres_changes", { event: "*", schema: "public", table: t }, debounced);
     }
+
     channel.subscribe();
     return () => {
       clearTimeout(timer);

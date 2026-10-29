@@ -968,13 +968,19 @@ export default function SargenteantePage() {
                           )}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => remover("afastamentos", af.id)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 transition"
-                            title="Encerrar / Remover publicação"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {af.somenteLeitura ? (
+                            <span className="text-[10px] text-sky-400 font-mono" title="Missão gerenciada pelo Sistema Itinerante">
+                              🔗 Itinerante
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => remover("afastamentos", af.id)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 transition"
+                              title="Encerrar / Remover publicação"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

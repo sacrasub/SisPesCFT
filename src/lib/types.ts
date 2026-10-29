@@ -273,6 +273,14 @@ export interface Afastamento {
     t3: string;
     t4: string;
   };
+
+  /* --- Integração Banco Único CFT (Itinerante EPM / STA) --- */
+  /** Sistema de origem. "ITINERANTE" indica missão originada no Sistema Itinerante. */
+  origem?: "SISPES" | "ITINERANTE";
+  /** Quando verdadeiro, é somente leitura no SisPesCFT (gerenciado pelo Sistema Itinerante). */
+  somenteLeitura?: boolean;
+  /** Código único da missão no Itinerante (ex: MIS-2026-09-AMT-SAI) */
+  codigoMissaoExterna?: string;
 }
 
 export type TipoLancamentoRotina =

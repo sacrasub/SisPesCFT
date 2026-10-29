@@ -450,7 +450,7 @@ export function criarSeed(hoje: string = hojeISO()): Database {
       emailFuncional: "teixeira.rodrigo@marinha.mil.br",
       emailPessoal: "rodrigo.rpst@hotmail.com",
     }),
-    mil("m33", "3SG", "ROBSON", "Robson Santos da Silva", "15.0197.99", "CONTRAMESTRES", ["CONTRAMESTRE"], {
+    mil("m33", "3SG", "ROBSON", "Robson Santos da Silva", "15.0178.93", "CONTRAMESTRES", ["CONTRAMESTRE"], {
       especialidade: "MC",
       setorCodigo: "CF-41",
       funcao: "Metalurgia e Manutenção / Contramestre",

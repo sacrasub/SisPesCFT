@@ -1150,7 +1150,14 @@ export function FichaAcompanhamentoModal({
                         <div key={a.id} className="p-3.5 bg-navy-950/60 hover:bg-navy-900/40 transition text-xs">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <div className="font-bold text-slate-100">{a.titulo}</div>
+                              <div className="font-bold text-slate-100 flex items-center gap-1.5 flex-wrap">
+                                <span>{a.titulo}</span>
+                                {a.somenteLeitura && (
+                                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                                    🔗 Itinerante
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[11px] text-slate-400 mt-0.5">
                                 Categoria: <strong>{a.categoria}</strong> • Período: <strong>{fmt(a.inicio)} a {a.terminoAsd ? "ASD" : fmt(a.fim)}</strong>
                               </div>

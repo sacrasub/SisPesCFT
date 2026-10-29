@@ -78,31 +78,42 @@ export async function testarConexaoSupabase(
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const client = createClient(url, key);
-    const { error } = await client.from("sispes_militares").select("id").limit(1);
 
-    if (error) {
+    // 1. Testa a tabela compartilhada de militares
+    const resMilitar = await client.from("militares").select("id, nip").limit(1);
+    if (resMilitar.error) {
+      return {
+        ok: false,
+        mensagem: `Erro na tabela 'militares' do Supabase: ${resMilitar.error.message}. Execute a migração do Banco Único CFT no SQL Editor.`,
+        tabelasEncontradas: false,
+      };
+    }
+
+    // 2. Testa as tabelas exclusivas do SisPesCFT
+    const resParams = await client.from("sispes_parametros").select("id").limit(1);
+    if (resParams.error) {
       if (
-        error.message.includes("does not exist") ||
-        error.code === "42P01" ||
-        error.message.includes("relation")
+        resParams.error.message.includes("does not exist") ||
+        resParams.error.code === "42P01" ||
+        resParams.error.message.includes("relation")
       ) {
         return {
           ok: false,
           mensagem:
-            "Conectado ao Supabase com sucesso, mas a tabela 'sispes_militares' ainda não foi criada. Execute o script atualizado no SQL Editor do Supabase.",
+            "Conectado ao Supabase com sucesso, mas o schema do SisPesCFT ainda não foi criado. Execute o script '001_banco_unico_cft.sql' no SQL Editor do projeto.",
           tabelasEncontradas: false,
         };
       }
       return {
         ok: false,
-        mensagem: `Erro de autenticação/acesso no Supabase: ${error.message} (Código ${error.code || "N/A"})`,
+        mensagem: `Erro de acesso no Supabase: ${resParams.error.message} (Código ${resParams.error.code || "N/A"})`,
         tabelasEncontradas: false,
       };
     }
 
     return {
       ok: true,
-      mensagem: "Conexão com o Supabase estabelecida com sucesso! Tabelas prontas para sincronização em tempo real.",
+      mensagem: "Conexão com o Supabase CFT estabelecida com sucesso! Cadastro unificado e sincronização em tempo real ativos.",
       tabelasEncontradas: true,
     };
   } catch (err) {
