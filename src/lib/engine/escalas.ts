@@ -24,6 +24,7 @@ import {
   type Contexto,
   type Indisponibilidade,
 } from "./disponibilidade";
+import { avaliarReintegracaoDispensados } from "./regrasOI0206D";
 
 /* ------------------------------------------------------------------ */
 /* Classificação                                                       */
@@ -150,6 +151,16 @@ export interface ServicoDia {
 const AQUECIMENTO_DIAS = 21;
 
 /**
+ * Data-base padrão da simulação das escalas individuais. Toda previsão é simulada a partir
+ * desta data fixa, de modo que o serviço de um dia seja SEMPRE o mesmo, independentemente da
+ * janela consultada (Grade Mensal, Lista de 14 dias, Folha de 4 Tempos ou Detalhe Diário).
+ */
+export const DATA_BASE_ESCALAS_PADRAO: ISODate = "2026-01-01";
+
+/** Cache por contexto (recriado a cada alteração do banco) e por configuração de escala. */
+const cacheSimulacao = new WeakMap<Contexto, WeakMap<EscalaConfig, { inicioSim: ISODate; fim: ISODate; dias: ServicoDia[] }>>();
+
+/**
  * Gera a previsão de serviço aplicando as regras da OI 02-06D:
  * - Filtro "2 para 1" (evita escalar quem tirou serviço em D-1 ou D-2 se houver alternativa);
  * - Pontuação diferenciada: Rotina Normal (1,0) vs Rotina de Domingo/Feriado (1,5);
@@ -163,6 +174,24 @@ export function gerarEscala(ctx: Contexto, escala: EscalaConfig, inicio: ISODate
 }
 
 function gerarEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISODate, fim: ISODate): ServicoDia[] {
+  const base = ctx.db.parametros.dataBaseEscalas ?? DATA_BASE_ESCALAS_PADRAO;
+  // Antes da data-base não há histórico estável: usa aquecimento de 21 dias.
+  const inicioSim = base <= inicio ? base : addDays(inicio, -AQUECIMENTO_DIAS);
+
+  let porEscala = cacheSimulacao.get(ctx);
+  if (!porEscala) {
+    porEscala = new WeakMap();
+    cacheSimulacao.set(ctx, porEscala);
+  }
+  let entrada = porEscala.get(escala);
+  if (!entrada || entrada.inicioSim !== inicioSim || entrada.fim < fim) {
+    entrada = { inicioSim, fim, dias: simularEscalaIndividual(ctx, escala, inicioSim, fim) };
+    porEscala.set(escala, entrada);
+  }
+  return entrada.dias.filter((s) => s.data >= inicio && s.data <= fim);
+}
+
+function simularEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISODate, fim: ISODate): ServicoDia[] {
   const pool = efetivoEscala(ctx, escala);
   const ultimo = new Map<string, ISODate>();
   const ptsDom = new Map<string, number>();
@@ -179,7 +208,7 @@ function gerarEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISOD
 
   const out: ServicoDia[] = [];
 
-  for (const data of eachDay(addDays(inicio, -AQUECIMENTO_DIAS), fim)) {
+  for (const data of eachDay(inicio, fim)) {
     const cobertura = coberturaDia(ctx, escala, data, pool);
     const indisp = new Set(cobertura.indisponiveis.map((i) => i.militarId));
     const vermelha = isFimDeSemana(data);
@@ -216,7 +245,7 @@ function gerarEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISOD
 
     // Verificar Papeleta de Troca de Serviço autorizada pelo Ajudante (CF-02)
     for (const tr of trocas) {
-      if (tr.dataServicoOriginal === data) {
+      if (tr.dataServicoOriginal === data && !indisp.has(tr.militarSubstitutoId)) {
         const idx = escalados.indexOf(tr.militarSolicitanteId);
         if (idx >= 0) {
           escalados = escalados.map((id, i) => (i === idx ? tr.militarSubstitutoId : id));
@@ -234,6 +263,14 @@ function gerarEscalaIndividual(ctx: Contexto, escala: EscalaConfig, inicio: ISOD
         ptsDom.set(id, (ptsDom.get(id) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.TITULAR);
       } else {
         ptsNorm.set(id, (ptsNorm.get(id) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.NORMAL.TITULAR);
+      }
+    }
+    // Retém também pontua (OI 02-06D): 0,25 em rotina normal / 0,5 em domingo/feriado
+    if (retemId && !escalados.includes(retemId)) {
+      if (vermelha) {
+        ptsDom.set(retemId, (ptsDom.get(retemId) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.DOMINGO_FERIADO.RETEM);
+      } else {
+        ptsNorm.set(retemId, (ptsNorm.get(retemId) ?? 0) + REGRAS_PONTUACAO_OI_02_06D.NORMAL.RETEM);
       }
     }
 
@@ -376,7 +413,7 @@ export interface LinhaGradeSOMOR {
 
 export function gerarGradeSOMOR(
   ctx: Contexto,
-  escalaId: EscalaConfig["id"],
+  escalaId: EscalaConfig["id"] | "TODAS",
   ano: number,
   mes0: number,
   permitirCaboVolante = false,
@@ -395,6 +432,99 @@ export function gerarGradeSOMOR(
     return { data: d, diaSemCurto: DIAS_SEMANA_CURTOS[ds], numDia: Number(d.slice(8, 10)), fds: ds === 0 || ds === 6 };
   });
 
+  const alertas0x0: { militarId: string; data: ISODate }[] = [];
+  const alertasINSemHabilitacao: { data: ISODate; apenasSemHabilitacao: number }[] = [];
+
+  // ─────────────────────────────────────────────────────────────────
+  // CASO 1: VISÃO CONCOMITANTE GERAL (TODAS AS ESCALAS SIMULTÂNEAS)
+  // ─────────────────────────────────────────────────────────────────
+  if (escalaId === "TODAS") {
+    const pool = ctx.militares.filter((m) => m.ativo).sort(porAntiguidade);
+    const todasEscalas = ctx.db.escalas;
+
+    const servicosPorEscala = new Map<EscalaTipo, Map<ISODate, ServicoDia>>();
+    for (const esc of todasEscalas) {
+      const servs = gerarEscala(ctx, esc, addDays(inicioMesISO, -1), dias[dias.length - 1]);
+      servicosPorEscala.set(esc.id, new Map(servs.map((s) => [s.data, s])));
+    }
+
+    const ordemPostos: EscalaTipo[] = [
+      "OSE",
+      "CONTRAMESTRE",
+      "SUPERVISOR_SECOM",
+      "CABO_AUXILIAR",
+      "MOTORISTA",
+      "INSPECAO_NAVAL",
+      "VIGIA",
+      "IDENTIFICADOR",
+    ];
+
+    const linhas: LinhaGradeSOMOR[] = pool.map((m) => {
+      const habilitacaoIN = corHabilitacaoIN(m, inicioMesISO);
+      const celulas: CelulaSOMOR[] = dias.map((data) => {
+        const ontem = addDays(data, -1);
+
+        // 1) Verificar afastamentos ativos
+        const afs = afastamentosNoDia(ctx, m.id, data).filter((a) => a.status !== "CANCELADO");
+        if (afs.length > 0) {
+          const af = afs[0];
+          let leg: LegendaOficialCapitania = "D";
+          if (af.categoria === "FERIAS" || af.categoria === "CURSO") leg = "Fe/C";
+          else if (af.categoria === "LICENCA") leg = "Li";
+          else if (af.categoria === "INSPECAO_NAVAL") leg = "O";
+          else if (af.categoria === "MISSAO") leg = "D";
+          return {
+            sigla: "AUSENTE",
+            legendaOficial: leg,
+            textoAusencia: af.subtipo || af.titulo,
+            categoriaAusencia: af.categoria,
+          };
+        }
+
+        // 2) Verificar serviço em qualquer posto na data
+        for (const posto of ordemPostos) {
+          const servHoje = servicosPorEscala.get(posto)?.get(data);
+          if (servHoje?.militarIds.includes(m.id)) {
+            const ehQuarto = posto === "VIGIA" || posto === "CABO_AUXILIAR" || posto === "IDENTIFICADOR";
+            const ehOp = posto === "INSPECAO_NAVAL";
+            return {
+              sigla: siglaPorEscala(posto),
+              legendaOficial: ehOp ? "O" : ehQuarto ? "Nº" : "X",
+            };
+          }
+        }
+
+        // 3) Verificar se saiu de serviço 24h ontem (SSVÇ)
+        let estavaDeServico24hOntem = false;
+        for (const posto of ordemPostos) {
+          if (posto === "MOTORISTA") continue;
+          const servOntem = servicosPorEscala.get(posto)?.get(ontem);
+          if (servOntem?.militarIds.includes(m.id)) {
+            estavaDeServico24hOntem = true;
+            break;
+          }
+        }
+        if (estavaDeServico24hOntem) {
+          return { sigla: "SSVÇ", legendaOficial: "Fo" };
+        }
+
+        // 4) Dispensado da Escala (OI 02-06D)
+        if (m.dispensaEscala && m.dispensaEscala !== "NENHUMA" && m.dispensaEscala !== "RESTRICAO_MEDICA_PARCIAL") {
+          return { sigla: "Di", legendaOficial: "Di", textoAusencia: MOTIVO_DISPENSA_LABEL[m.dispensaEscala] };
+        }
+
+        return { sigla: null, legendaOficial: null };
+      });
+
+      return { militar: m, habilitacaoIN, celulas };
+    });
+
+    return { linhas, cabecalhos, alertas0x0, alertasINSemHabilitacao };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // CASO 2: VISÃO DE ESCALA INDIVIDUAL ESPECÍFICA
+  // ─────────────────────────────────────────────────────────────────
   const escala = ctx.db.escalas.find((e) => e.id === escalaId);
   if (!escala) return { linhas: [], cabecalhos, alertas0x0: [], alertasINSemHabilitacao: [] };
 
@@ -409,9 +539,6 @@ export function gerarGradeSOMOR(
   const inMap = new Map(servicosIN.map((s) => [s.data, s]));
 
   const cabos = pool.filter((m) => POSTOS_PRACAS.includes(m.posto) && m.posto === "CB");
-
-  const alertas0x0: { militarId: string; data: ISODate }[] = [];
-  const alertasINSemHabilitacao: { data: ISODate; apenasSemHabilitacao: number }[] = [];
 
   for (const s of servicosIN) {
     const escaladosIN = s.militarIds;
@@ -552,11 +679,8 @@ export function gerarDetalheDiarioOI0206D(ctx: Contexto, data: ISODate): Resulta
     const titularId = servDia?.militarIds[0] ?? "";
     const retemId = servDia?.retemId;
 
-    if (servDia && servDia.cobertura.aptos <= REGRAS_PONTUACAO_OI_02_06D.LIMITE_SEGURANCA_REINTEGRACAO_DISPENSADOS.GERAL + 1) {
-      alertasSegurancaEscala.push(
-        `Alerta OI 02-06D [${cfg.nome}]: Apenas ${servDia.cobertura.aptos} militares aptos. Avaliar reintegração temporária de dispensados (Mestre, Sargenteante, Fiel) mediante autorização do Capitão dos Portos.`,
-      );
-    }
+    const alertaReint = avaliarReintegracaoDispensados(ctx, cfg, data);
+    if (alertaReint) alertasSegurancaEscala.push(alertaReint.mensagem);
 
     if (titularId) {
       itens.push({

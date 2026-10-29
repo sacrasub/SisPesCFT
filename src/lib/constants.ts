@@ -14,7 +14,7 @@ import type {
   Usuario,
 } from "./types";
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /* ------------------------------------------------------------------ */
 /* Setores Oficiais da CFT (Tabela de Lotação CF-01 a CF-42)          */

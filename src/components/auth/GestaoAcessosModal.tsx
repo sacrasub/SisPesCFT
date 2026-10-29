@@ -573,7 +573,7 @@ export function GestaoAcessosModal({ aberto, onFechar }: GestaoAcessosModalProps
                         onChange={(e: any) => setNovoRole(e.target.value)}
                         className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-sky-400"
                       >
-                        <option value="operador">Operador GAP / SisPes</option>
+                        <option value="operador">Operador</option>
                         <option value="admin">Administrador</option>
                         <option value="visualizador">Visualizador</option>
                       </select>
@@ -690,7 +690,7 @@ export function GestaoAcessosModal({ aberto, onFechar }: GestaoAcessosModalProps
                                 onChange={(e: any) => handleAlterarRole(u.email, e.target.value)}
                                 className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-sky-400 transition"
                               >
-                                <option value="operador">Operador GAP</option>
+                                <option value="operador">Operador</option>
                                 <option value="admin">Administrador</option>
                                 <option value="visualizador">Visualizador</option>
                               </select>
@@ -878,7 +878,7 @@ export function GestaoAcessosModal({ aberto, onFechar }: GestaoAcessosModalProps
                   onChange={(e: any) => setEditRole(e.target.value)}
                   className="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white"
                 >
-                  <option value="operador">Operador GAP / SisPes</option>
+                  <option value="operador">Operador</option>
                   <option value="admin">Administrador</option>
                   <option value="visualizador">Visualizador</option>
                 </select>

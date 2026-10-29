@@ -17,10 +17,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   const items = [
-    { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
-    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
-    { href: "/lancamentos", label: "Lançar", icone: FileSpreadsheet },
     { href: "/escalas", label: "Escalas", icone: CalendarCheck },
+    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
+    { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
+    { href: "/lancamentos", label: "Lançar", icone: FileSpreadsheet },
     { href: "/ferias", label: "Férias", icone: CalendarDays },
     { href: "/comando", label: "Comando", icone: Compass },
   ];

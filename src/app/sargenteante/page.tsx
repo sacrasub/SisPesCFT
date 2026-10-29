@@ -11,11 +11,13 @@ import {
   REGRAS_PONTUACAO_OI_02_06D,
 } from "@/lib/constants";
 import { fmt, diffDays, addDays } from "@/lib/dates";
+import { alertasFeriasSemAntecedencia } from "@/lib/engine/regrasOI0206D";
 import { uid, nomeMilitar, toCSV, downloadArquivo } from "@/lib/utils";
 import { gerarFolhaPresencaDia, gerarDetalheDiarioOI0206D } from "@/lib/engine/escalas";
 import { obterIncumbenciasAcumuladas } from "@/lib/engine/disponibilidade";
 import { PostoChip } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { FichaAcompanhamentoModal } from "@/components/militar/FichaAcompanhamentoModal";
 import {
   ShieldAlert,
   Users,
@@ -56,6 +58,7 @@ export default function SargenteantePage() {
   const [busca, setBusca] = useState<string>("");
   const [filtroSetor, setFiltroSetor] = useState<SetorCodigo | "TODOS">("TODOS");
   const [filtroCodigo, setFiltroCodigo] = useState<string>("TODOS");
+  const [militarParaFicha, setMilitarParaFicha] = useState<Militar | null>(null);
 
   // Modal de Alocação / Publicação no Plano Semanal com Substituto Obrigatório e suporte a ASD
   const [modalAlocAberto, setModalAlocAberto] = useState(false);
@@ -335,14 +338,10 @@ export default function SargenteantePage() {
   }, [db.afastamentos, dataRef]);
 
   // Alertas de férias sem aviso mínimo de 8 dias (OI 02-06D)
-  const alertasFerias8Dias = useMemo(() => {
-    return ausenciasPlanoSemanal.filter(
-      (a) =>
-        a.categoria === "FERIAS" &&
-        a.inicio > hoje &&
-        diffDays(hoje, a.inicio) < REGRAS_PONTUACAO_OI_02_06D.ANTECEDENCIA_SUBSTITUTO_FERIAS_DIAS,
-    );
-  }, [ausenciasPlanoSemanal, hoje]);
+  const alertasFerias8Dias = useMemo(
+    () => alertasFeriasSemAntecedencia(ausenciasPlanoSemanal, hoje),
+    [ausenciasPlanoSemanal, hoje],
+  );
 
   return (
     <div className="space-y-6">
@@ -570,16 +569,23 @@ export default function SargenteantePage() {
                 <div>
                   {/* Topo do Card: Antiguidade, Posto, Nome, NIP e Status */}
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div
+                      className="flex items-center gap-2 flex-wrap cursor-pointer group"
+                      onClick={() => setMilitarParaFicha(m)}
+                      title="Clique para abrir a Ficha de Acompanhamento Individual"
+                    >
                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
                         #{String(m.antiguidadeOrdem ?? 0).padStart(2, "0")}
                       </span>
                       <PostoChip posto={m.posto} />
-                      <span className="font-bold text-sm text-slate-100">
+                      <span className="font-bold text-sm text-slate-100 group-hover:text-sky-300 transition">
                         {m.especialidade ? `(${m.especialidade}) ` : ""}
                         {m.nomeGuerra}
                       </span>
                       <span className="text-[11px] font-mono text-slate-400">{m.nip}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sky-950/60 text-sky-300 border border-sky-500/30 text-[10px] font-bold group-hover:bg-sky-500 group-hover:text-navy-950 transition">
+                        📄 Ficha
+                      </span>
                     </div>
 
                     <span
@@ -698,6 +704,14 @@ export default function SargenteantePage() {
                     title="Marcar como Saindo de Serviço (SSVÇ | X | X | X)"
                   >
                     🛡️ SSVÇ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMilitarParaFicha(m)}
+                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-navy-950 hover:bg-sky-950/80 text-sky-300 border border-sky-500/40 transition flex items-center gap-1 cursor-pointer"
+                    title="Visualizar e editar a Ficha Individual de Acompanhamento (com Histórico)"
+                  >
+                    <span>📄 Ficha</span>
                   </button>
                   <button
                     onClick={() => alocarUmClique(m, "MODAL_COMPLETO")}
@@ -1289,6 +1303,12 @@ export default function SargenteantePage() {
           </div>
         )}
       </Modal>
+      {/* Ficha Individual de Acompanhamento do Militar (com Histórico) */}
+      <FichaAcompanhamentoModal
+        militar={militarParaFicha}
+        aberto={!!militarParaFicha}
+        onFechar={() => setMilitarParaFicha(null)}
+      />
     </div>
   );
 }

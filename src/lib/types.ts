@@ -110,15 +110,37 @@ export interface SaldoPontosEscala {
   totalPonderado: number; // Soma consolidada para ordenação do motor
 }
 
+export type StatusSituacaoMilitar =
+  | "ATIVO"              // ✓ Ativo / Na Escala de Serviço
+  | "FERIAS"             // 🌴 Férias
+  | "MISSAO"             // ✈️ Viagem / Missão / Operação
+  | "LICENCA"            // 🏥 Licença (LTSP / LE)
+  | "DESEMBARCADO"       // ⚓ Desembarcado / Transferido
+  | "INATIVO";           // 🚫 Inativo / Outro Afastamento
+
 export type SituacaoMilitar =
   | "PRONTO"
+  | "ATIVO"
   | "FERIAS"
   | "LTS"
   | "LTSPF"
+  | "LICENCA"
+  | "MISSAO"
   | "MISSAO_EXTERNA"
   | "CURSO_EXTERNO"
   | "INSTALACAO"
-  | "DESTAQUE";
+  | "DESTAQUE"
+  | "DESEMBARCADO"
+  | "INATIVO";
+
+export interface StatusSituacaoInfo {
+  status: StatusSituacaoMilitar;
+  label: string;
+  labelTabela: string;
+  badgeCls: string;
+  detalhe?: string;
+  afastamentoAtivo?: Afastamento;
+}
 
 export type RestricaoTipo =
   | "SEM_SRAK"
@@ -180,6 +202,29 @@ export interface Militar {
   emailFuncional?: string;
   emailPessoal?: string;
   telefoneContato?: string;
+  roleAcesso?: "super_admin" | "admin" | "operador" | "visualizador";
+  /** Histórico funcional, averbações e linha do tempo do militar */
+  historico?: RegistroHistoricoMilitar[];
+}
+
+export interface RegistroHistoricoMilitar {
+  id: string;
+  data: ISODate;
+  tipo:
+    | "SERVICO"
+    | "AFASTAMENTO"
+    | "TROCA_SERVICO"
+    | "PROMOCAO"
+    | "ELOGIO"
+    | "CURSO"
+    | "ALTERACAO_FUNCAO"
+    | "RESTRICAO"
+    | "ANOTACAO";
+  titulo: string;
+  descricao?: string;
+  documentoReferencia?: string;
+  registradoPor?: string;
+  createdAt: string;
 }
 
 export type AfastamentoCategoria =
@@ -380,6 +425,8 @@ export interface Parametros {
   /** Se verdadeiro, ativa alerta de Regresso Geral (ex.: "REGRESSO GERAL 7h ATÉ SEXTA-FEIRA"). */
   regressoGeralAtivo?: boolean;
   regressoGeralTexto?: string;
+  /** Data-base fixa da simulação das escalas (garante previsão estável entre telas). */
+  dataBaseEscalas?: ISODate;
 }
 
 export interface Database {

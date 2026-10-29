@@ -66,7 +66,7 @@ export const GAP_DEFAULT_WHITELIST: UsuarioCftAuth[] = [
   },
   {
     "email": "admin@marinha.mil.br",
-    "nome": "Administrador GAP CFT",
+    "nome": "Administrador SisPes CFT",
     "role": "admin",
     "ativo": true,
     "tipo": "institucional",
@@ -1858,4 +1858,38 @@ export function removerUsuario(email: string): void {
   let users = obterCacheUsuarios();
   users = users.filter((u) => normalizarEmail(u.email) !== norm);
   salvarCacheUsuarios(users);
+}
+
+export function obterUsuarioAuthPorMilitar(m: { nip: string; emailFuncional?: string }): UsuarioCftAuth | undefined {
+  const users = obterCacheUsuarios();
+  const eFunc = normalizarEmail(m.emailFuncional || "");
+
+  // 1. Tenta pelo email funcional
+  if (eFunc) {
+    const achou = users.find(
+      (u) =>
+        normalizarEmail(u.email) === eFunc ||
+        normalizarEmail(u.email_funcional || "") === eFunc
+    );
+    if (achou) return achou;
+  }
+
+  // 2. Tenta pelo NIP no GAP_MILITARES_MAP
+  for (const em in GAP_MILITARES_MAP) {
+    if (GAP_MILITARES_MAP[em].nip === m.nip) {
+      const achou = users.find((u) => {
+        const uNorm = normalizarEmail(u.email);
+        const emNorm = normalizarEmail(em);
+        return uNorm === emNorm || normalizarEmail(u.email_funcional || "") === emNorm;
+      });
+      if (achou) return achou;
+    }
+  }
+
+  return undefined;
+}
+
+export function verificarSenhaAlterada(email: string): boolean {
+  if (!email) return false;
+  return obterStatusSenhaUsuario(email).senhaAlterada;
 }

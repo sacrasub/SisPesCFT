@@ -33,10 +33,10 @@ export function Navbar() {
   const [menuAberto, setMenuAberto] = useState(false);
 
   const links = [
-    { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
-    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
-    { href: "/lancamentos", label: "Lançamentos", icone: FileSpreadsheet },
     { href: "/escalas", label: "Escalas", icone: CalendarCheck },
+    { href: "/sargenteante", label: "Sargenteante", icone: ShieldCheck },
+    { href: "/dashboard", label: "Dashboard", icone: LayoutDashboard },
+    { href: "/lancamentos", label: "Lançamentos", icone: FileSpreadsheet },
     { href: "/ferias", label: "Férias & Plano", icone: CalendarDays },
     { href: "/comando", label: "Painel Comando", icone: Compass },
     { href: "/efetivo", label: "Efetivo", icone: Users },

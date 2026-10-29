@@ -59,6 +59,14 @@ export function afastamentosNoDia(ctx: Contexto, militarId: string, data: ISODat
 
 const prioridade = (c: AfastamentoCategoria) => PRIORIDADE_CATEGORIA.indexOf(c);
 
+/** Categorias que sempre bloqueiam a escala de estado (a Equipe de IN não é bloqueada pela própria IN). */
+const CATEGORIAS_BLOQUEIO_OBRIGATORIO: AfastamentoCategoria[] = ["FERIAS", "LICENCA", "MISSAO", "CURSO", "INSPECAO_NAVAL"];
+
+export function bloqueiaEscalaDeEstado(categoria: AfastamentoCategoria, escala: EscalaConfig): boolean {
+  if (escala.id === "INSPECAO_NAVAL" && categoria === "INSPECAO_NAVAL") return false;
+  return CATEGORIAS_BLOQUEIO_OBRIGATORIO.includes(categoria);
+}
+
 export interface Presenca {
   status: StatusPresenca;
   afastamento?: Afastamento;
@@ -143,10 +151,16 @@ export function indisponibilidadeEscala(
     };
   }
 
-  // 4. Verificar afastamentos que impactam escala
+  // 4. Verificar afastamentos que impactam escala.
+  //    Férias, Licenças (LTS/LTSPF), Missão, Curso/Aula EPM e Inspeção Naval SEMPRE retiram o militar
+  //    da escala de estado (OI 02-06D), mesmo que o lançamento esteja marcado como "não impacta escala".
   const considerarPrevistos = ctx.db.parametros.considerarPrevistos;
   const af = afastamentosNoDia(ctx, m.id, data)
-    .filter((a) => a.impactaEscala && (considerarPrevistos || a.status === "CONFIRMADO"))
+    .filter(
+      (a) =>
+        (a.impactaEscala || bloqueiaEscalaDeEstado(a.categoria, escala)) &&
+        (considerarPrevistos || a.status === "CONFIRMADO"),
+    )
     .sort((a, b) => prioridade(a.categoria) - prioridade(b.categoria))[0];
   if (af) {
     return {
@@ -274,5 +288,49 @@ export function resumoEfetivo(ctx: Contexto, data: ISODate): ResumoEfetivo {
     porStatus,
     porDivisao: [...divMap.values()].sort((a, b) => b.total - a.total),
     afastados,
+  };
+}
+
+export interface Horarios4TemposMilitar {
+  t1: string;
+  t2: string;
+  t3: string;
+  t4: string;
+  statusObservacao: string;
+}
+
+/**
+ * Obtém os horários da Folha de 4 Tempos de um militar específico em uma data.
+ */
+export function obterHorarios4TemposMilitar(
+  ctx: Contexto,
+  militar: Militar,
+  data: ISODate,
+): Horarios4TemposMilitar {
+  const p = presenca(ctx, militar.id, data);
+  if (p.afastamento) {
+    if (p.afastamento.horarioEspecifico) {
+      return {
+        t1: p.afastamento.horarioEspecifico.t1,
+        t2: p.afastamento.horarioEspecifico.t2,
+        t3: p.afastamento.horarioEspecifico.t3,
+        t4: p.afastamento.horarioEspecifico.t4,
+        statusObservacao: p.afastamento.titulo || p.status,
+      };
+    }
+    return {
+      t1: "X",
+      t2: "X",
+      t3: "X",
+      t4: "X",
+      statusObservacao: p.afastamento.titulo || p.status,
+    };
+  }
+  return {
+    t1: "07:30",
+    t2: "11:30",
+    t3: "13:15",
+    t4: "16:30",
+    statusObservacao: "EXPEDIENTE NORMAL",
   };
 }

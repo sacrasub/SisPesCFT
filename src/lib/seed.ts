@@ -18,7 +18,7 @@ import type {
 export { DB_VERSION };
 
 /**
- * Dados REAIS do efetivo da Capitania Fluvial de Tabatinga (CFT) — v2.0 (DB_VERSION = 3).
+ * Dados REAIS do efetivo da Capitania Fluvial de Tabatinga (CFT) — v2.1 (DB_VERSION = 4).
  * Consolidado a partir dos cadernos "Plano Semanal da CFT" e "Escala de Serviço da Tripulação" (OI 02-06D).
  * Contém os 64 militares reais com NIPs, e-mails funcionais/pessoais, setores CF-01 a CF-42,
  * incumbências/paióis, instrutores EPM, qualificações de serviço e pontuação OI 02-06D.
@@ -866,6 +866,22 @@ export function criarSeed(hoje: string = hojeISO()): Database {
     }),
     af("FERIAS", "PESSOAL", "Férias – 1º período", "Férias Regulamentares — CB-MO Emanoel", 20, 49, ["m47"], "PREVISTO", {
       militarSubstitutoId: "m35",
+    }),
+    // 11. Cumprimento do PREPOM/2026 em Amaturá/AM (MSG SO Júnior – CF-10)
+    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 1ºSG-CN Bruno Rubem", 7, 22, ["m16"], "CONFIRMADO", {
+      local: "Amaturá - AM",
+      militarSubstitutoId: "m27", // 3ºSG Cousaquiviti cobrindo SECOM (CF-09)
+      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
+    }),
+    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 3ºSG-SQ João Cleber", 13, 22, ["m36"], "CONFIRMADO", {
+      local: "Amaturá - AM",
+      militarSubstitutoId: "m42", // 3ºSG Geraldo cobrindo Salvatagem STA (CF-22)
+      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
+    }),
+    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 3ºSG-MO João Marcos", 7, 11, ["m35"], "CONFIRMADO", {
+      local: "Amaturá - AM",
+      militarSubstitutoId: "m39", // 3ºSG Everton cobrindo Depósito de Combustível (CF-40)
+      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
     }),
   ];
 

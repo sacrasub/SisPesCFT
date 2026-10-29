@@ -29,6 +29,7 @@ import {
   SOMOR_COR,
 } from "@/lib/engine/escalas";
 import { CoberturaBadge, PostoChip } from "@/components/ui/Badge";
+import { validarPapeletaTroca } from "@/lib/engine/regrasOI0206D";
 import { Modal } from "@/components/ui/Modal";
 import {
   CalendarCheck,
@@ -47,27 +48,68 @@ import {
   Plus,
   Check,
   X,
+  Printer,
+  FileSpreadsheet,
+  Download,
+  Search,
+  ChevronDown,
+  Filter,
+  FileText,
 } from "lucide-react";
 import type {
   EscalaTipo,
   ISODate,
   NivelHierarquiaTroca,
   PapeletaTrocaServico,
+  Militar,
 } from "@/lib/types";
+import { ModalEdicaoCelula } from "@/components/escalas/ModalEdicaoCelula";
+import { CentralImpressao } from "@/components/escalas/CentralImpressao";
+import { FichaAcompanhamentoModal } from "@/components/militar/FichaAcompanhamentoModal";
+import type { CelulaSOMOR } from "@/lib/engine/escalas";
 
-type ModoViz = "somor" | "lista" | "detalhe_oi";
+type ModoViz = "somor" | "lista" | "detalhe_oi" | "impressao";
 type ModoLegendaGrade = "SOMOR" | "OFICIAL_CAPITANIA";
+
+const ITENS_LEGENDA_SOMOR = [
+  { sigla: "OSE", label: "Oficial de Serviço", bg: "#0284c7" },
+  { sigla: "CTR", label: "Contramestre Serviço", bg: "#6b7280" },
+  { sigla: "SECOM", label: "Supervisor SECOM", bg: "#0d9488" },
+  { sigla: "CB-AUX", label: "Cabo Auxiliar / Dia", bg: "#4f46e5" },
+  { sigla: "MO", label: "Motorista", bg: "#2563eb" },
+  { sigla: "IN", label: "Inspeção Naval", bg: "#db2777" },
+  { sigla: "VG", label: "Vigia de Embarcações", bg: "#374151" },
+  { sigla: "SSVÇ", label: "Saindo de Serviço (Folga)", bg: "#065f46" },
+  { sigla: "Di", label: "Dispensado (OI 02-06D)", bg: "#475569" },
+  { sigla: "AUSENTE", label: "Férias / Missão / LTS", bg: "#92400e" },
+];
 
 export default function EscalasPage() {
   const { db, ctx, hoje, substituirTudo } = useDb();
   const { isAdmin } = useAuth();
 
-  // Escala ativa
-  const [escalaId, setEscalaId] = useState<EscalaTipo>("CONTRAMESTRE");
+  // Escala ativa (padrão "TODAS" para visualização concomitante de todas as escalas)
+  const [escalaId, setEscalaId] = useState<EscalaTipo | "TODAS">("TODAS");
   // Modo de visualização (Padrão SOMOR como padrão operacional)
   const [modoViz, setModoViz] = useState<ModoViz>("somor");
   // Modo de legenda na grade mensal: Sigla SOMOR vs Legenda Oficial da Capitania (X, O, Fe/C, D, Fo, Li, Nº, Di)
   const [modoLegenda, setModoLegenda] = useState<ModoLegendaGrade>("SOMOR");
+
+  // Filtro de Legendas Clicáveis (Escalas Concomitantes)
+  const [filtrosLegenda, setFiltrosLegenda] = useState<Set<string>>(
+    () => new Set(["OSE", "CTR", "SECOM", "CB-AUX", "MO", "IN", "VG", "IDENT", "SSVÇ", "Di", "AUSENTE"]),
+  );
+  const [ocultarSemEscala, setOcultarSemEscala] = useState<boolean>(false);
+
+  // Modal interativo de edição da célula da grade
+  const [celulaEdicao, setCelulaEdicao] = useState<{
+    militar: Militar;
+    data: ISODate;
+    celula: CelulaSOMOR;
+  } | null>(null);
+
+  // Ficha de Acompanhamento Individual do Militar (com Histórico)
+  const [militarParaFicha, setMilitarParaFicha] = useState<Militar | null>(null);
 
   // Período de visualização (modo lista): janela de 14 dias
   const [inicioPeriodo, setInicioPeriodo] = useState<ISODate>(hoje);
@@ -97,7 +139,7 @@ export default function EscalasPage() {
 
   // Escala selecionada
   const escala = useMemo(
-    () => db.escalas.find((e) => e.id === escalaId) || db.escalas[0],
+    () => (escalaId === "TODAS" ? db.escalas[0] : db.escalas.find((e) => e.id === escalaId) || db.escalas[0]),
     [db.escalas, escalaId],
   );
 
@@ -128,11 +170,225 @@ export default function EscalasPage() {
     [escalaGerada],
   );
 
-  // Grade SOMOR
+  // Grade SOMOR (suporta escala individual ou "TODAS" concomitantes)
   const gradeSOMOR = useMemo(() => {
     if (modoViz !== "somor") return null;
     return gerarGradeSOMOR(ctx, escalaId, anoSOMOR, mesSOMOR, caboVolante);
   }, [ctx, escalaId, anoSOMOR, mesSOMOR, caboVolante, modoViz]);
+
+  // Seleção e Busca de Militares na Grade SOMOR
+  const [militaresSelecionados, setMilitaresSelecionados] = useState<Set<string>>(() => new Set());
+  const [filtroApenasSelecionados, setFiltroApenasSelecionados] = useState<boolean>(false);
+  const [buscaMilitarSOMOR, setBuscaMilitarSOMOR] = useState<string>("");
+  const [menuSelecaoAberto, setMenuSelecaoAberto] = useState<boolean>(false);
+
+  // Linhas da grade filtradas por legenda, busca, e opção de exibir apenas selecionados
+  const linhasFiltradasSOMOR = useMemo(() => {
+    if (!gradeSOMOR) return [];
+    let lista = gradeSOMOR.linhas;
+
+    // 1. Filtro de apenas selecionados
+    if (filtroApenasSelecionados && militaresSelecionados.size > 0) {
+      lista = lista.filter((l) => militaresSelecionados.has(l.militar.id));
+    }
+
+    // 2. Busca por texto (nome de guerra, nome completo, posto, nip, setor)
+    if (buscaMilitarSOMOR.trim()) {
+      const termo = buscaMilitarSOMOR.toLowerCase().trim();
+      lista = lista.filter((l) => {
+        const m = l.militar;
+        return (
+          m.nomeGuerra.toLowerCase().includes(termo) ||
+          m.nomeCompleto.toLowerCase().includes(termo) ||
+          m.posto.toLowerCase().includes(termo) ||
+          m.nip.includes(termo) ||
+          (m.setorCodigo && m.setorCodigo.toLowerCase().includes(termo)) ||
+          m.divisao.toLowerCase().includes(termo)
+        );
+      });
+    }
+
+    // 3. Ocultar sem escala
+    if (ocultarSemEscala) {
+      lista = lista.filter((l) =>
+        l.celulas.some((c) => c.sigla && filtrosLegenda.has(c.sigla)),
+      );
+    }
+
+    return lista;
+  }, [
+    gradeSOMOR,
+    filtroApenasSelecionados,
+    militaresSelecionados,
+    buscaMilitarSOMOR,
+    ocultarSemEscala,
+    filtrosLegenda,
+  ]);
+
+  // Alternadores de seleção de militares
+  const toggleSelecionarMilitar = (id: string) => {
+    setMilitaresSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selecionarTodosVisiveis = () => {
+    if (!gradeSOMOR) return;
+    const todosVisiveisSel =
+      linhasFiltradasSOMOR.length > 0 &&
+      linhasFiltradasSOMOR.every((l) => militaresSelecionados.has(l.militar.id));
+
+    if (todosVisiveisSel) {
+      // Se todos os visíveis já estão selecionados, desmarca eles
+      setMilitaresSelecionados((prev) => {
+        const next = new Set(prev);
+        linhasFiltradasSOMOR.forEach((l) => next.delete(l.militar.id));
+        return next;
+      });
+    } else {
+      // Marca todos os visíveis
+      setMilitaresSelecionados((prev) => {
+        const next = new Set(prev);
+        linhasFiltradasSOMOR.forEach((l) => next.add(l.militar.id));
+        return next;
+      });
+    }
+  };
+
+  const selecionarPorCategoria = (
+    categoria: "TODOS" | "OFICIAIS" | "SO" | "SARGENTOS" | "CABOS_MN",
+  ) => {
+    if (!gradeSOMOR) return;
+    const novos = new Set(militaresSelecionados);
+
+    gradeSOMOR.linhas.forEach((l) => {
+      const p = l.militar.posto;
+      let incluir = false;
+      if (categoria === "TODOS") incluir = true;
+      else if (categoria === "OFICIAIS") incluir = ["CF", "CC", "CT", "1T", "2T", "GM"].includes(p);
+      else if (categoria === "SO") incluir = p === "SO";
+      else if (categoria === "SARGENTOS") incluir = ["1SG", "2SG", "3SG"].includes(p);
+      else if (categoria === "CABOS_MN") incluir = ["CB", "MN"].includes(p);
+
+      if (incluir) novos.add(l.militar.id);
+    });
+
+    setMilitaresSelecionados(novos);
+  };
+
+  const limparSelecao = () => {
+    setMilitaresSelecionados(new Set());
+    setFiltroApenasSelecionados(false);
+  };
+
+  // Alternadores de filtro da legenda
+  const toggleFiltroLegenda = (sigla: string) => {
+    setFiltrosLegenda((prev) => {
+      const next = new Set(prev);
+      if (next.has(sigla)) {
+        next.delete(sigla);
+      } else {
+        next.add(sigla);
+      }
+      return next;
+    });
+  };
+
+  const selecionarTodasLegendas = () => {
+    setFiltrosLegenda(
+      new Set(["OSE", "CTR", "SECOM", "CB-AUX", "MO", "IN", "VG", "IDENT", "SSVÇ", "Di", "AUSENTE"]),
+    );
+  };
+
+  const selecionarApenasServicos = () => {
+    setFiltrosLegenda(
+      new Set(["OSE", "CTR", "SECOM", "CB-AUX", "MO", "IN", "VG", "IDENT"]),
+    );
+  };
+
+  // Exportação para Excel (.csv) com delimitador ";" e UTF-8 BOM
+  const handleExportarExcel = (apenasSelecionados: boolean = false) => {
+    if (!gradeSOMOR) return;
+    const mesNome = MESES[mesSOMOR];
+    const csvLinhas: string[] = [];
+
+    const linhasExportar =
+      apenasSelecionados && militaresSelecionados.size > 0
+        ? gradeSOMOR.linhas.filter((l) => militaresSelecionados.has(l.militar.id))
+        : linhasFiltradasSOMOR;
+
+    csvLinhas.push(`MARINHA DO BRASIL;CAPITANIA FLUVIAL DE TABATINGA;SISPESCFT`);
+    csvLinhas.push(`GRADE MENSAL DE ESCALAS DE SERVIÇO (OI 02-06D);${mesNome.toUpperCase()} DE ${anoSOMOR}`);
+    csvLinhas.push(
+      apenasSelecionados
+        ? `FILTRO: APENAS MILITARES SELECIONADOS (${linhasExportar.length} MILITARES)`
+        : `ESCALAS ATIVAS NO FILTRO;${Array.from(filtrosLegenda).join(", ")}`,
+    );
+    csvLinhas.push("");
+
+    const cabecalhosCols = [
+      "ANTIGUIDADE",
+      "POSTO",
+      "ESPECIALIDADE",
+      "NOME DE GUERRA",
+      "NOME COMPLETO",
+      "NIP",
+      "SETOR",
+    ];
+    gradeSOMOR.cabecalhos.forEach((c) => {
+      cabecalhosCols.push(`"${c.numDia} - ${c.diaSemCurto}"`);
+    });
+    csvLinhas.push(cabecalhosCols.join(";"));
+
+    for (const linha of linhasExportar) {
+      const m = linha.militar;
+      const rowCols = [
+        `"#${String(m.antiguidadeOrdem ?? 0).padStart(2, "0")}"`,
+        `"${m.posto}"`,
+        `"${m.especialidade ?? "—"}"`,
+        `"${m.nomeGuerra}"`,
+        `"${m.nomeCompleto}"`,
+        `"${m.nip}"`,
+        `"${m.setorCodigo ?? m.divisao}"`,
+      ];
+
+      linha.celulas.forEach((cel) => {
+        if (!cel.sigla || !filtrosLegenda.has(cel.sigla)) {
+          rowCols.push('""');
+        } else {
+          const val =
+            modoLegenda === "OFICIAL_CAPITANIA"
+              ? cel.legendaOficial ?? cel.sigla
+              : cel.sigla;
+          const texto =
+            cel.sigla === "AUSENTE" && cel.textoAusencia
+              ? `${val} (${cel.textoAusencia})`
+              : val;
+          rowCols.push(`"${texto}"`);
+        }
+      });
+
+      csvLinhas.push(rowCols.join(";"));
+    }
+
+    const csvContent = "\uFEFF" + csvLinhas.join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const sufixo = apenasSelecionados ? `_Selecionados_${linhasExportar.length}` : "";
+    link.setAttribute("download", `SisPesCFT_Escalas_${mesNome}_${anoSOMOR}${sufixo}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Detalhe Diário OI 02-06D (Grupo de CAV + Grupo de Reação)
   const detalheOI = useMemo(
@@ -167,11 +423,25 @@ export default function EscalasPage() {
     return escalaGerada.find((s) => s.data === diaSelecionado);
   }, [escalaGerada, diaSelecionado]);
 
+  // Validação em tempo real da Papeleta de Troca (48h + hierarquia OI 02-06D)
+  const validacaoTroca = useMemo(() => {
+    if (!modalTrocaAberto) return null;
+    const cfg = db.escalas.find((e) => e.id === trocaPosto);
+    if (!cfg) return null;
+    return validarPapeletaTroca(ctx, {
+      hoje,
+      dataServico: trocaData,
+      escala: cfg,
+      solicitanteId: trocaSolicitanteId,
+      substitutoId: trocaSubstitutoId,
+      nivel: trocaNivel,
+    });
+  }, [modalTrocaAberto, db.escalas, ctx, hoje, trocaData, trocaPosto, trocaSolicitanteId, trocaSubstitutoId, trocaNivel]);
+
   // Registrar Nova Papeleta de Troca de Serviço (Anexo O - OI 02-06D)
   const handleCriarPapeletaTroca = async (e: React.FormEvent) => {
     e.preventDefault();
-    const diasAntecedencia = diffDays(hoje, trocaData);
-    const cumpre48h = diasAntecedencia >= 2;
+    const cumpre48h = validacaoTroca?.cumpreAntecedencia48h ?? diffDays(hoje, trocaData) >= 2;
     const seq = String((db.trocasServico?.length ?? 0) + 15).padStart(3, "0");
 
     const nova: PapeletaTrocaServico = {
@@ -232,6 +502,17 @@ export default function EscalasPage() {
 
         {/* Seletor de Escalas em Abas */}
         <div className="flex items-center gap-1.5 p-1 rounded-xl bg-navy-900 border border-slate-800 overflow-x-auto max-w-full">
+          <button
+            type="button"
+            onClick={() => setEscalaId("TODAS")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 ${
+              escalaId === "TODAS"
+                ? "bg-gold-500 text-navy-950 shadow-md font-extrabold"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-800"
+            }`}
+          >
+            <span>⭐ Todas as Escalas (Concomitante)</span>
+          </button>
           {db.escalas.map((e) => {
             const ativa = e.id === escalaId;
             return (
@@ -263,7 +544,7 @@ export default function EscalasPage() {
                 : "bg-navy-900 border-slate-800 text-slate-400 hover:text-slate-200"
             }`}
           >
-            <TableProperties className="w-3.5 h-3.5" /> Grade Mensal (SOMOR / Oficial)
+            <TableProperties className="w-3.5 h-3.5" /> Grade Mensal (SOMOR / Concomitante)
           </button>
           <button
             onClick={() => setModoViz("lista")}
@@ -283,17 +564,40 @@ export default function EscalasPage() {
                 : "bg-navy-900 border-slate-800 text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Shield className="w-3.5 h-3.5" /> Detalhe Diário OI 02-06D (CAV + Reação + Papeletas de Troca)
+            <Shield className="w-3.5 h-3.5" /> Detalhe Diário OI 02-06D (CAV + Reação)
+          </button>
+          <button
+            onClick={() => setModoViz("impressao")}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition border ${
+              modoViz === "impressao"
+                ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-md shadow-emerald-950/30"
+                : "bg-navy-900 border-slate-800 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Printer className="w-3.5 h-3.5" /> 🖨️ Central de Impressão de Documentos
           </button>
         </div>
 
-        <button
-          onClick={() => setModalTrocaAberto(true)}
-          className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center gap-1.5"
-        >
-          <ArrowRightLeft className="w-3.5 h-3.5" />
-          <span>Nova Papeleta de Troca (Anexo O - OI 02-06D)</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {modoViz === "somor" && (
+            <button
+              onClick={() => handleExportarExcel(false)}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-400/40 text-xs font-bold flex items-center gap-1.5 transition"
+              title="Exportar as escalas selecionadas na grade para planilha Excel (.csv)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Exportar Excel (.csv)</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setModalTrocaAberto(true)}
+            className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center gap-1.5"
+          >
+            <ArrowRightLeft className="w-3.5 h-3.5" />
+            <span>Nova Papeleta (Anexo O)</span>
+          </button>
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -588,14 +892,17 @@ export default function EscalasPage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <TableProperties className="w-5 h-5 text-fuchsia-400" />
                 <h2 className="text-base font-bold text-slate-100">
-                  Grade Mensal Consolidada — {modoLegenda === "SOMOR" ? "Padrão Operacional SOMOR" : "Legenda Oficial da Capitania (OI 02-06D)"}
+                  Grade Mensal Consolidada — {escalaId === "TODAS" ? "⭐ Todas as Escalas Concomitantes" : ESCALA_LABEL[escalaId]}
                 </h2>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
-                  {ESCALA_LABEL[escalaId]}
+                  {modoLegenda === "SOMOR" ? "Padrão Operacional SOMOR" : "Legenda Oficial da Capitania (OI 02-06D)"}
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  ({linhasFiltradasSOMOR.length} de {gradeSOMOR.linhas.length} militares exibidos)
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                Alterne entre as siglas operacionais da planilha SOMOR (CTR, MO, VG, IN, SSVÇ) e a legenda normativa de Capitania (X, O, Fe/C, D, Fo, Li, Nº, Di).
+                Clique nas siglas da legenda abaixo para filtrar/visualizar as escalas concomitantes. Clique em qualquer célula da grade para editar, definir folga ou registrar trocas.
               </p>
             </div>
 
@@ -672,7 +979,7 @@ export default function EscalasPage() {
                       <span className="text-slate-400">
                         {" "}
                         · {a.data} — Militar alocado em IN na folga imediata após serviço de{" "}
-                        {ESCALA_LABEL[escalaId]}.
+                        {escalaId === "TODAS" ? "escala de estado" : ESCALA_LABEL[escalaId]}.
                       </span>
                     </div>
                   </div>
@@ -699,48 +1006,279 @@ export default function EscalasPage() {
             </div>
           )}
 
-          {/* Legenda Dinâmica conforme modo selecionado */}
-          {modoLegenda === "SOMOR" ? (
-            <div className="flex flex-wrap gap-2 text-[10px]">
-              {[
-                { sigla: "OSE", label: "Oficial de Serviço", bg: "#0284c7" },
-                { sigla: "CTR", label: "Contramestre Serviço", bg: "#6b7280" },
-                { sigla: "SECOM", label: "Supervisor SECOM", bg: "#0d9488" },
-                { sigla: "CB-AUX", label: "Cabo Auxiliar / Dia", bg: "#4f46e5" },
-                { sigla: "MO", label: "Motorista", bg: "#2563eb" },
-                { sigla: "IN", label: "Inspeção Naval", bg: "#db2777" },
-                { sigla: "VG", label: "Vigia de Embarcações", bg: "#374151" },
-                { sigla: "SSVÇ", label: "Saindo de Serviço (Folga)", bg: "#065f46" },
-                { sigla: "Di", label: "Dispensado (OI 02-06D)", bg: "#475569" },
-              ].map((l) => (
-                <span
-                  key={l.sigla}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-700 bg-navy-900"
+          {/* Legenda Dinâmica Interativa Clicável (Filtro de Escalas Concomitantes) */}
+          <div className="p-3.5 rounded-2xl bg-navy-950 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                <Layers className="w-4 h-4 text-gold-400" />
+                <span>Legenda Clicável (Clique para filtrar/concomitar escalas):</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selecionarTodasLegendas}
+                  className="px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-navy-700 text-gold-400 text-[11px] font-bold transition border border-slate-700"
                 >
-                  <span className="w-3 h-3 rounded" style={{ background: l.bg }} />
-                  <span className="font-bold text-slate-200">{l.sigla}</span>
-                  <span className="text-slate-400">— {l.label}</span>
-                </span>
-              ))}
-              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-amber-600/40 bg-amber-950/30">
-                <span className="w-3 h-3 rounded bg-amber-600" />
-                <span className="font-bold text-amber-300">AUSENTE</span>
-                <span className="text-slate-400">— Férias / Missão / Curso / LTS</span>
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2 text-[10px]">
-              {Object.entries(LEGENDA_OFICIAL_CAPITANIA).map(([cod, desc]) => (
-                <span
-                  key={cod}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-sky-500/30 bg-navy-900"
+                  ⭐ Ver Todas
+                </button>
+                <button
+                  type="button"
+                  onClick={selecionarApenasServicos}
+                  className="px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-navy-700 text-sky-300 text-[11px] font-bold transition border border-slate-700"
                 >
-                  <span className="font-mono font-extrabold text-sky-300">{cod}</span>
-                  <span className="text-slate-400">— {desc}</span>
-                </span>
-              ))}
+                  🛡️ Apenas SVÇs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOcultarSemEscala(!ocultarSemEscala)}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition border ${
+                    ocultarSemEscala
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                      : "bg-navy-800 text-slate-400 border-slate-700 hover:text-slate-200"
+                  }`}
+                  title="Ocultar militares que não possuem nenhuma escala ativa neste mês"
+                >
+                  {ocultarSemEscala ? "✓ Ocultando Sem Escala" : "👁️ Ocultar Não Escalados"}
+                </button>
+              </div>
             </div>
-          )}
+
+            {modoLegenda === "SOMOR" ? (
+              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                {ITENS_LEGENDA_SOMOR.map((item) => {
+                  const ativa = filtrosLegenda.has(item.sigla);
+                  return (
+                    <button
+                      key={item.sigla}
+                      type="button"
+                      onClick={() => toggleFiltroLegenda(item.sigla)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border font-bold transition cursor-pointer select-none ${
+                        ativa
+                          ? "bg-navy-900 border-slate-600 text-white shadow-sm ring-1 ring-white/20"
+                          : "bg-navy-950/40 border-slate-800 text-slate-500 opacity-35 grayscale"
+                      }`}
+                      title={`Clique para ${ativa ? "ocultar" : "exibir"} ${item.label}`}
+                    >
+                      <span
+                        className="w-3 h-3 rounded shadow-sm shrink-0"
+                        style={{ background: item.bg }}
+                      />
+                      <span className="font-extrabold">{item.sigla}</span>
+                      <span className="font-normal opacity-80 hidden sm:inline">— {item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                {Object.entries(LEGENDA_OFICIAL_CAPITANIA).map(([cod, desc]) => (
+                  <span
+                    key={cod}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-sky-500/30 bg-navy-900"
+                  >
+                    <span className="font-mono font-extrabold text-sky-300">{cod}</span>
+                    <span className="text-slate-400">— {desc}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Barra de Busca, Seleção e Ações em Lote de Militares */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-navy-950 border border-slate-800">
+            <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Buscar militar por nome de guerra, posto, civil, NIP ou setor..."
+                  value={buscaMilitarSOMOR}
+                  onChange={(e) => setBuscaMilitarSOMOR(e.target.value)}
+                  className="input text-xs pl-8 py-2 w-full bg-navy-900 border-slate-700"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
+                {buscaMilitarSOMOR && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaMilitarSOMOR("")}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-white text-xs cursor-pointer"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Botão Dropdown Seleção Rápida */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setMenuSelecaoAberto(!menuSelecaoAberto)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    militaresSelecionados.size > 0
+                      ? "bg-sky-500/20 text-sky-200 border-sky-400/50 shadow-sm"
+                      : "bg-navy-900 text-slate-300 border-slate-700 hover:bg-navy-800"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-sky-400" />
+                  <span>
+                    {militaresSelecionados.size > 0
+                      ? `Selecionados (${militaresSelecionados.size})`
+                      : "Selecionar Militares"}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+
+                {menuSelecaoAberto && (
+                  <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-72 rounded-2xl bg-navy-900 border border-slate-700 shadow-2xl p-3 z-30 space-y-2">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <span className="text-xs font-bold text-slate-200">
+                        Seleção Rápida de Militares
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setMenuSelecaoAberto(false)}
+                        className="text-slate-400 hover:text-white text-xs cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionarPorCategoria("TODOS");
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-navy-950 hover:bg-navy-800 text-slate-200 font-semibold border border-slate-800 text-left transition cursor-pointer"
+                      >
+                        ⭐ Todos (64)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionarPorCategoria("OFICIAIS");
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-navy-950 hover:bg-navy-800 text-slate-200 font-semibold border border-slate-800 text-left transition cursor-pointer"
+                      >
+                        ⚓ Oficiais
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionarPorCategoria("SO");
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-navy-950 hover:bg-navy-800 text-slate-200 font-semibold border border-slate-800 text-left transition cursor-pointer"
+                      >
+                        🪖 Suboficiais (SO)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionarPorCategoria("SARGENTOS");
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-navy-950 hover:bg-navy-800 text-slate-200 font-semibold border border-slate-800 text-left transition cursor-pointer"
+                      >
+                        🛡️ Sargentos (1/2/3SG)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selecionarPorCategoria("CABOS_MN");
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-navy-950 hover:bg-navy-800 text-slate-200 font-semibold border border-slate-800 text-left transition cursor-pointer"
+                      >
+                        ⚓ Cabos & MN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          limparSelecao();
+                          setMenuSelecaoAberto(false);
+                        }}
+                        className="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 font-semibold border border-rose-500/30 text-left transition cursor-pointer"
+                      >
+                        ✕ Limpar Seleção
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Ações para militares selecionados */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {militaresSelecionados.size > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setFiltroApenasSelecionados(!filtroApenasSelecionados)}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                      filtroApenasSelecionados
+                        ? "bg-gold-500 text-navy-950 border-gold-400 shadow-md shadow-gold-900/30"
+                        : "bg-navy-900 text-sky-300 border-sky-400/40 hover:bg-navy-800"
+                    }`}
+                    title={
+                      filtroApenasSelecionados
+                        ? "Voltar a exibir todos os militares"
+                        : "Isolar e exibir apenas os militares selecionados na grade"
+                    }
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>
+                      {filtroApenasSelecionados
+                        ? `Exibindo ${militaresSelecionados.size} Selecionados (Ver Todos)`
+                        : `Exibir Apenas Selecionados (${militaresSelecionados.size})`}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportarExcel(true)}
+                    className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-950 cursor-pointer"
+                    title="Exportar apenas os militares selecionados para planilha Excel (.csv)"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Excel Selecionados</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModoViz("impressao")}
+                    className="px-3 py-2 rounded-xl bg-navy-900 hover:bg-navy-800 text-slate-200 text-xs font-bold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                    title="Imprimir papeletas para os militares selecionados"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-gold-400" />
+                    <span>Imprimir</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={limparSelecao}
+                    className="px-2.5 py-2 rounded-xl text-slate-400 hover:text-rose-400 text-xs font-bold transition hover:bg-rose-500/10 cursor-pointer"
+                    title="Desmarcar todos os militares selecionados"
+                  >
+                    Limpar
+                  </button>
+                </>
+              )}
+
+              {militaresSelecionados.size === 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleExportarExcel(false)}
+                  className="px-3 py-2 rounded-xl bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                  title="Exportar toda a grade mensal visível para planilha Excel (.csv)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Exportar Excel Completo</span>
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Tabela Grade SOMOR */}
           <div className="card p-0 overflow-hidden">
@@ -748,8 +1286,34 @@ export default function EscalasPage() {
               <table className="text-[11px] border-collapse min-w-max">
                 <thead>
                   <tr className="bg-navy-950 border-b border-slate-700">
-                    <th className="sticky left-0 z-20 bg-navy-950 text-left px-3 py-2.5 text-slate-300 font-bold whitespace-nowrap border-r border-slate-700 min-w-[220px]">
-                      # • POSTO — NOME [SETOR]
+                    <th className="sticky left-0 z-20 bg-navy-950 text-left px-3 py-2.5 text-slate-300 font-bold whitespace-nowrap border-r border-slate-700 min-w-[250px]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={
+                            linhasFiltradasSOMOR.length > 0 &&
+                            linhasFiltradasSOMOR.every((l) =>
+                              militaresSelecionados.has(l.militar.id),
+                            )
+                          }
+                          onChange={selecionarTodosVisiveis}
+                          className="rounded border-slate-600 bg-navy-950 text-sky-500 focus:ring-sky-400 cursor-pointer w-3.5 h-3.5"
+                          title={
+                            linhasFiltradasSOMOR.length > 0 &&
+                            linhasFiltradasSOMOR.every((l) =>
+                              militaresSelecionados.has(l.militar.id),
+                            )
+                              ? "Desmarcar todos os militares visíveis"
+                              : "Selecionar todos os militares visíveis"
+                          }
+                        />
+                        <span># • POSTO — NOME [SETOR]</span>
+                        {militaresSelecionados.size > 0 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-400/30">
+                            {militaresSelecionados.size} sel.
+                          </span>
+                        )}
+                      </div>
                     </th>
                     {gradeSOMOR.cabecalhos.map((cab) => (
                       <th
@@ -766,54 +1330,124 @@ export default function EscalasPage() {
                 </thead>
 
                 <tbody>
-                  {gradeSOMOR.linhas.map((linha) => {
+                  {linhasFiltradasSOMOR.map((linha) => {
                     const hab = linha.habilitacaoIN;
                     const corNome =
                       hab === "habilitado" ? "text-violet-300 font-bold" : "text-orange-400 font-bold";
+                    const estaSelecionado = militaresSelecionados.has(linha.militar.id);
 
                     return (
                       <tr
                         key={linha.militar.id}
-                        className="border-b border-slate-800/60 hover:bg-navy-900/40 transition-colors"
+                        className={`border-b transition-colors ${
+                          estaSelecionado
+                            ? "bg-sky-950/30 border-sky-500/40 ring-1 ring-sky-500/20"
+                            : "border-slate-800/60 hover:bg-navy-900/40"
+                        }`}
                       >
                         <td
-                          className={`sticky left-0 z-10 bg-navy-900 px-3 py-1.5 whitespace-nowrap border-r border-slate-700 ${corNome}`}
-                          title={`${linha.militar.nomeCompleto} | Setor: ${linha.militar.setorCodigo ?? linha.militar.divisao}`}
+                          className={`sticky left-0 z-10 px-3 py-1.5 whitespace-nowrap border-r border-slate-700 select-none transition-colors ${
+                            estaSelecionado
+                              ? "bg-[#0b1e38] border-r-sky-500 text-sky-100 font-bold shadow-sm"
+                              : `bg-navy-900 ${corNome}`
+                          }`}
+                          title={`${linha.militar.nomeCompleto} | Setor: ${linha.militar.setorCodigo ?? linha.militar.divisao} (Clique para selecionar)`}
                         >
-                          <span className="text-[10px] font-mono text-slate-500 mr-1">
-                            #{String(linha.militar.antiguidadeOrdem ?? 0).padStart(2, "0")}
-                          </span>
-                          <span className="text-slate-400 font-normal">{linha.militar.posto}</span>{" "}
-                          {linha.militar.nomeGuerra}
-                          <span className="ml-1.5 text-[9px] font-mono text-sky-400 font-normal">
-                            [{linha.militar.setorCodigo ?? linha.militar.divisao}]
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={estaSelecionado}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                toggleSelecionarMilitar(linha.militar.id);
+                              }}
+                              className="rounded border-slate-700 bg-navy-950 text-sky-500 focus:ring-sky-400 cursor-pointer w-3.5 h-3.5 shrink-0"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMilitarParaFicha(linha.militar);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-sky-300 hover:bg-navy-800 transition shrink-0"
+                              title={`Abrir Ficha Individual de ${linha.militar.nomeGuerra} (com Histórico)`}
+                            >
+                              <FileText className="w-3.5 h-3.5 text-sky-400" />
+                            </button>
+                            <div
+                              className="cursor-pointer flex items-center gap-1 min-w-0"
+                              onClick={() => toggleSelecionarMilitar(linha.militar.id)}
+                            >
+                              <span
+                                className={`text-[10px] font-mono mr-1 ${
+                                  estaSelecionado ? "text-sky-300 font-bold" : "text-slate-500"
+                                }`}
+                              >
+                                #{String(linha.militar.antiguidadeOrdem ?? 0).padStart(2, "0")}
+                              </span>
+                              <span className={estaSelecionado ? "text-sky-200" : "text-slate-400 font-normal"}>
+                                {linha.militar.posto}
+                              </span>{" "}
+                              <span className={estaSelecionado ? "text-white font-bold" : ""}>
+                                {linha.militar.nomeGuerra}
+                              </span>
+                              <span className="ml-1 text-[9px] font-mono text-sky-400 font-normal">
+                                [{linha.militar.setorCodigo ?? linha.militar.divisao}]
+                              </span>
+                              {estaSelecionado && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse ml-1 shrink-0" />
+                              )}
+                            </div>
+                          </div>
                         </td>
 
                         {linha.celulas.map((cel, i) => {
                           const cab = gradeSOMOR.cabecalhos[i];
+                          const estaAtiva = cel.sigla ? filtrosLegenda.has(cel.sigla) : true;
                           const textoExibido =
                             modoLegenda === "OFICIAL_CAPITANIA" ? cel.legendaOficial : cel.sigla;
 
-                          if (!textoExibido) {
+                          if (!textoExibido || !estaAtiva) {
                             return (
                               <td
                                 key={cab.data}
-                                className={`px-1 py-1.5 text-center border-r border-slate-800/40 ${
+                                onClick={() => {
+                                  setCelulaEdicao({
+                                    militar: linha.militar,
+                                    data: cab.data,
+                                    celula: cel,
+                                  });
+                                }}
+                                className={`px-1 py-1.5 text-center border-r border-slate-800/40 cursor-pointer hover:bg-navy-800/60 transition ${
                                   cab.fds ? "bg-rose-950/10" : ""
                                 }`}
-                              />
+                                title={`Clique para alocar ou editar ${linha.militar.nomeGuerra} no dia ${fmt(cab.data)}`}
+                              >
+                                {textoExibido && !estaAtiva ? (
+                                  <span className="inline-block px-1 py-0.5 rounded text-[8px] font-bold text-slate-600 bg-slate-900/40 opacity-20 select-none">
+                                    {textoExibido}
+                                  </span>
+                                ) : null}
+                              </td>
                             );
                           }
+
                           if (cel.sigla === "AUSENTE" && modoLegenda === "SOMOR") {
                             return (
                               <td
                                 key={cab.data}
-                                className="px-1 py-1.5 text-center border-r border-slate-800/40"
-                                title={`${cel.categoriaAusencia}: ${cel.textoAusencia}`}
+                                onClick={() => {
+                                  setCelulaEdicao({
+                                    militar: linha.militar,
+                                    data: cab.data,
+                                    celula: cel,
+                                  });
+                                }}
+                                className="px-1 py-1.5 text-center border-r border-slate-800/40 cursor-pointer hover:ring-2 hover:ring-gold-400/80 transition"
+                                title={`${cel.categoriaAusencia}: ${cel.textoAusencia} — Clique para editar`}
                               >
                                 <span
-                                  className="inline-block px-1 py-0.5 rounded text-[9px] font-bold text-amber-950 leading-tight"
+                                  className="inline-block px-1 py-0.5 rounded text-[9px] font-bold text-amber-950 leading-tight shadow-sm hover:scale-105 transition-transform"
                                   style={{ background: "#fbbf24", minWidth: 36 }}
                                 >
                                   {(cel.textoAusencia ?? "AUS").slice(0, 8).toUpperCase()}
@@ -821,22 +1455,31 @@ export default function EscalasPage() {
                               </td>
                             );
                           }
+
                           const bgColor =
                             cel.sigla && cel.sigla !== "AUSENTE"
                               ? SOMOR_COR[cel.sigla] ?? "#374151"
                               : "#d97706";
+
                           return (
                             <td
                               key={cab.data}
-                              className="px-1 py-1.5 text-center border-r border-slate-800/40 relative"
+                              onClick={() => {
+                                setCelulaEdicao({
+                                  militar: linha.militar,
+                                  data: cab.data,
+                                  celula: cel,
+                                });
+                              }}
+                              className="px-1 py-1.5 text-center border-r border-slate-800/40 relative cursor-pointer hover:ring-2 hover:ring-gold-400/80 transition"
                               title={
                                 cel.alerta0x0
-                                  ? "⚠️ Regime 0×0: sem folga real!"
-                                  : cel.textoAusencia || String(textoExibido)
+                                  ? "⚠️ Regime 0×0: sem folga real! — Clique para editar"
+                                  : `${cel.textoAusencia || String(textoExibido)} — Clique para editar`
                               }
                             >
                               <span
-                                className="inline-block px-1 py-0.5 rounded text-[9px] font-bold text-white leading-tight"
+                                className="inline-block px-1 py-0.5 rounded text-[9px] font-bold text-white leading-tight shadow-sm hover:scale-105 transition-transform"
                                 style={{ background: bgColor, minWidth: 36 }}
                               >
                                 {textoExibido}
@@ -1180,6 +1823,16 @@ export default function EscalasPage() {
         </div>
       )}
 
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* MODO CENTRAL DE IMPRESSÃO DE DOCUMENTOS OFICIAIS                     */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {modoViz === "impressao" && (
+        <CentralImpressao
+          dataInicial={dataDetalhe}
+          onVoltarParaGrade={() => setModoViz("somor")}
+        />
+      )}
+
       {/* Modal de Detalhes do Dia */}
       <Modal
         aberto={!!diaSelecionado}
@@ -1356,6 +2009,26 @@ export default function EscalasPage() {
             </select>
           </div>
 
+          {validacaoTroca && (
+            <div
+              className={`p-3 rounded-xl border text-[11px] space-y-1 ${
+                validacaoTroca.valida
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+              }`}
+            >
+              <div className="font-bold">
+                {validacaoTroca.valida
+                  ? "✓ Papeleta conforme OI 02-06D"
+                  : "⚠ Inconsistências na Papeleta (OI 02-06D)"}
+                {validacaoTroca.nivelSugerido && ` — nível sugerido: ${validacaoTroca.nivelSugerido}º`}
+              </div>
+              {validacaoTroca.erros.map((er) => (
+                <div key={er}>• {er}</div>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="block text-slate-300 font-semibold mb-1">Justificativa na Papeleta</label>
             <input
@@ -1384,6 +2057,22 @@ export default function EscalasPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Modal Interativo de Edição da Célula de Escala */}
+      <ModalEdicaoCelula
+        aberto={celulaEdicao !== null}
+        onFechar={() => setCelulaEdicao(null)}
+        militar={celulaEdicao?.militar ?? null}
+        data={celulaEdicao?.data ?? null}
+        celula={celulaEdicao?.celula ?? null}
+      />
+
+      {/* Ficha de Acompanhamento Individual do Militar (com Histórico) */}
+      <FichaAcompanhamentoModal
+        militar={militarParaFicha}
+        aberto={!!militarParaFicha}
+        onFechar={() => setMilitarParaFicha(null)}
+      />
     </div>
   );
 }

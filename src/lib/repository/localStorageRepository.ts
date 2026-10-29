@@ -1,5 +1,6 @@
 import { criarSeed, DB_VERSION } from "../seed";
 import type { CollectionItem, CollectionKey, Database, Parametros } from "../types";
+import { migrarDatabase } from "./migracao";
 import { applyRemove, applyUpsert, type DataRepository } from "./types";
 
 const STORAGE_KEY = "sispescft:db:v1";
@@ -19,47 +20,21 @@ export class LocalStorageRepository implements DataRepository {
       try {
         const parsed = JSON.parse(raw) as Database;
         if (parsed.version === DB_VERSION) {
+          // Garante merge preventivo por ID caso algum afastamento oficial do seed não esteja no localStorage
+          const seed = criarSeed();
+          const idsExistentes = new Set((parsed.afastamentos ?? []).map((a) => a.id));
+          const novosOficiais = seed.afastamentos.filter((a) => !idsExistentes.has(a.id));
+          if (novosOficiais.length > 0) {
+            console.info(`[SisPesCFT] Injetando ${novosOficiais.length} novos afastamentos oficiais do seed na base v${DB_VERSION}...`);
+            parsed.afastamentos = [...(parsed.afastamentos ?? []), ...novosOficiais];
+            this.write(parsed);
+          }
           this.cache = parsed;
           return parsed;
         }
-        // Migração segura para DB_VERSION = 3: mescla pelo NIP e preserva afastamentos criados em testes
-        console.info(`[SisPesCFT] Migrando base local da versão ${parsed.version} para ${DB_VERSION} (preservando dados pelo NIP)...`);
-        const seed = criarSeed();
-        const oldByNip = new Map((parsed.militares ?? []).map((m) => [m.nip, m]));
-        const nipToNewId = new Map(seed.militares.map((m) => [m.nip, m.id]));
-        const oldIdToNewId = new Map<string, string>();
-
-        for (const oldM of parsed.militares ?? []) {
-          const newId = nipToNewId.get(oldM.nip);
-          if (newId) oldIdToNewId.set(oldM.id, newId);
-        }
-
-        const militaresMesclados = seed.militares.map((novoM) => {
-          const antigo = oldByNip.get(novoM.nip);
-          if (!antigo) return novoM;
-          return {
-            ...novoM,
-            // Preserva restrições customizadas adicionadas pelo usuário se houver
-            restricoes: antigo.restricoes?.length ? antigo.restricoes : novoM.restricoes,
-            pontosEscala: antigo.pontosEscala ?? novoM.pontosEscala,
-          };
-        });
-
-        // Preserva afastamentos customizados criados pelo usuário (IDs fora do seed padrão 'a001'..'a020')
-        const afastamentosCustomizados = (parsed.afastamentos ?? [])
-          .filter((a) => !/^a0\d\d$/.test(a.id))
-          .map((a) => ({
-            ...a,
-            militarIds: a.militarIds.map((id) => oldIdToNewId.get(id) ?? id),
-          }));
-
-        const migrado: Database = {
-          ...seed,
-          militares: militaresMesclados,
-          afastamentos: [...seed.afastamentos, ...afastamentosCustomizados],
-          trocasServico: parsed.trocasServico?.length ? parsed.trocasServico : seed.trocasServico,
-          updatedAt: new Date().toISOString(),
-        };
+        // Migração segura para DB_VERSION = 4: mescla pelo NIP e preserva afastamentos criados em testes
+        console.info(`[SisPesCFT] Migrando base local da versão ${parsed.version} para ${DB_VERSION} (preservando dados pelo NIP e missões)...`);
+        const migrado = migrarDatabase(parsed, criarSeed());
         this.write(migrado);
         return migrado;
       } catch {
