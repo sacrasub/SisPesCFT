@@ -6,16 +6,17 @@ import { COLLECTIONS, type DataRepository } from "./types";
 /**
  * Persistência multiusuário via Supabase (Postgres + Realtime).
  * Cada coleção é uma tabela com (id text PK, data jsonb, updated_at timestamptz).
- * Ver `supabase/schema.sql`.
+ * Usamos o prefixo `sispes_` para total isolamento, permitindo coexistir
+ * com outros sistemas da Capitania (ex.: cft-itinerante) no mesmo banco.
  */
 const TABELA: Record<CollectionKey, string> = {
-  militares: "militares",
-  afastamentos: "afastamentos",
-  escalas: "escalas",
-  eventos: "eventos",
-  trocasServico: "trocas_servico",
+  militares: "sispes_militares",
+  afastamentos: "sispes_afastamentos",
+  escalas: "sispes_escalas",
+  eventos: "sispes_eventos",
+  trocasServico: "sispes_trocas_servico",
 };
-const TABELA_PARAMETROS = "parametros";
+const TABELA_PARAMETROS = "sispes_parametros";
 
 export class SupabaseRepository implements DataRepository {
   readonly backend = "supabase" as const;

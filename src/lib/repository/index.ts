@@ -78,7 +78,7 @@ export async function testarConexaoSupabase(
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const client = createClient(url, key);
-    const { error } = await client.from("militares").select("id").limit(1);
+    const { error } = await client.from("sispes_militares").select("id").limit(1);
 
     if (error) {
       if (
@@ -89,7 +89,7 @@ export async function testarConexaoSupabase(
         return {
           ok: false,
           mensagem:
-            "Conectado ao Supabase com sucesso, mas a tabela 'militares' não existe. Execute o script 'supabase/schema.sql' no SQL Editor do seu projeto Supabase.",
+            "Conectado ao Supabase com sucesso, mas a tabela 'sispes_militares' ainda não foi criada. Execute o script atualizado no SQL Editor do Supabase.",
           tabelasEncontradas: false,
         };
       }
