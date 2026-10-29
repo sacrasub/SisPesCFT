@@ -436,11 +436,11 @@ export interface Database {
   escalas: EscalaConfig[];
   eventos: EventoInstitucional[];
   parametros: Parametros;
-  trocasServico?: PapeletaTrocaServico[];
+  trocasServico: PapeletaTrocaServico[];
   updatedAt: string;
 }
 
-export type CollectionKey = "militares" | "afastamentos" | "escalas" | "eventos";
+export type CollectionKey = "militares" | "afastamentos" | "escalas" | "eventos" | "trocasServico";
 export type CollectionItem<K extends CollectionKey> = Database[K][number];
 
 /* ---------- Autenticação / perfis ---------- */

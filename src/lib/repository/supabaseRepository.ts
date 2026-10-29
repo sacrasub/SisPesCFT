@@ -13,6 +13,7 @@ const TABELA: Record<CollectionKey, string> = {
   afastamentos: "afastamentos",
   escalas: "escalas",
   eventos: "eventos",
+  trocasServico: "trocas_servico",
 };
 const TABELA_PARAMETROS = "parametros";
 
@@ -22,12 +23,21 @@ export class SupabaseRepository implements DataRepository {
   constructor(private client: SupabaseClient) {}
 
   async load(): Promise<Database> {
-    const results = await Promise.all(COLLECTIONS.map((c) => this.client.from(TABELA[c]).select("data")));
+    const results = await Promise.all(
+      COLLECTIONS.map((c) => this.client.from(TABELA[c]).select("data")),
+    );
     const erro = results.find((r) => r.error)?.error;
     if (erro) throw new Error(`Supabase: ${erro.message}`);
 
-    const params = await this.client.from(TABELA_PARAMETROS).select("data").eq("id", "default").maybeSingle();
-    const [militares, afastamentos, escalas, eventos] = results.map((r) => (r.data ?? []).map((row) => row.data));
+    const params = await this.client
+      .from(TABELA_PARAMETROS)
+      .select("data")
+      .eq("id", "default")
+      .maybeSingle();
+
+    const [militares, afastamentos, escalas, eventos, trocasServico] = results.map(
+      (r) => (r.data ?? []).map((row) => row.data),
+    );
 
     // Base vazia: popula com a demonstração para facilitar a primeira implantação.
     if (!militares.length && !escalas.length) {
@@ -38,10 +48,11 @@ export class SupabaseRepository implements DataRepository {
 
     return {
       version: DB_VERSION,
-      militares,
-      afastamentos,
-      escalas,
-      eventos,
+      militares: militares ?? [],
+      afastamentos: afastamentos ?? [],
+      escalas: escalas ?? [],
+      eventos: eventos ?? [],
+      trocasServico: trocasServico ?? [],
       parametros: (params.data?.data as Parametros) ?? criarSeed().parametros,
       updatedAt: new Date().toISOString(),
     };
@@ -71,7 +82,8 @@ export class SupabaseRepository implements DataRepository {
     for (const c of COLLECTIONS) {
       const del = await this.client.from(TABELA[c]).delete().neq("id", "");
       if (del.error) throw new Error(del.error.message);
-      const rows = (db[c] as Array<{ id: string }>).map((item) => ({ id: item.id, data: item, updated_at: now }));
+      const items = (db[c] ?? []) as Array<{ id: string }>;
+      const rows = items.map((item) => ({ id: item.id, data: item, updated_at: now }));
       if (rows.length) {
         const ins = await this.client.from(TABELA[c]).insert(rows);
         if (ins.error) throw new Error(ins.error.message);

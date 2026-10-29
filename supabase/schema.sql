@@ -1,6 +1,8 @@
 -- =====================================================================
--- SisPesCFT — Schema Supabase (Postgres)
--- Execute no SQL Editor do Supabase e defina NEXT_PUBLIC_DATA_BACKEND=supabase
+-- SisPesCFT v2.1 — Schema Supabase (PostgreSQL + Realtime)
+-- Execute este script no SQL Editor do seu projeto Supabase (https://supabase.com).
+-- Ele cria todas as tabelas, índices de busca rápida, políticas de segurança
+-- e ativa o Supabase Realtime para sincronização simultânea entre estações da CFT.
 -- =====================================================================
 
 create table if not exists public.militares (
@@ -27,42 +29,52 @@ create table if not exists public.eventos (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.trocas_servico (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.parametros (
   id text primary key,
   data jsonb not null,
   updated_at timestamptz not null default now()
 );
 
--- Índices úteis para consultas por período/divisão diretamente no banco
+-- Índices otimizados para consultas por período, divisão e NIP
 create index if not exists afastamentos_periodo_idx
   on public.afastamentos (((data->>'inicio')), ((data->>'fim')));
 create index if not exists afastamentos_divisao_idx
   on public.afastamentos (((data->>'divisao')));
 create index if not exists militares_divisao_idx
   on public.militares (((data->>'divisao')));
+create index if not exists militares_nip_idx
+  on public.militares (((data->>'nip')));
+create index if not exists trocas_servico_data_idx
+  on public.trocas_servico (((data->>'dataServicoOriginal')));
 
--- Realtime (sincronização entre usuários simultâneos)
+-- Supabase Realtime (sincronização bidirecional instantânea entre postos/estações)
 alter publication supabase_realtime add table public.militares;
 alter publication supabase_realtime add table public.afastamentos;
 alter publication supabase_realtime add table public.escalas;
 alter publication supabase_realtime add table public.eventos;
+alter publication supabase_realtime add table public.trocas_servico;
 alter publication supabase_realtime add table public.parametros;
 
 -- ---------------------------------------------------------------------
--- RLS — POLÍTICA PROVISÓRIA (desenvolvimento/homologação).
--- Em produção, habilite Supabase Auth e restrinja escrita por perfil/divisão,
--- por exemplo usando um claim "divisao" no JWT:
---   using ((auth.jwt() ->> 'perfil') = 'ADMIN'
---          or (data->>'divisao') = (auth.jwt() ->> 'divisao'))
+-- RLS (Row Level Security) — Políticas de Acesso
 -- ---------------------------------------------------------------------
-alter table public.militares    enable row level security;
-alter table public.afastamentos enable row level security;
-alter table public.escalas      enable row level security;
-alter table public.eventos      enable row level security;
-alter table public.parametros   enable row level security;
+alter table public.militares      enable row level security;
+alter table public.afastamentos   enable row level security;
+alter table public.escalas        enable row level security;
+alter table public.eventos        enable row level security;
+alter table public.trocas_servico enable row level security;
+alter table public.parametros     enable row level security;
 
-create policy "acesso_dev_militares"    on public.militares    for all using (true) with check (true);
-create policy "acesso_dev_afastamentos" on public.afastamentos for all using (true) with check (true);
-create policy "acesso_dev_escalas"      on public.escalas      for all using (true) with check (true);
-create policy "acesso_dev_eventos"      on public.eventos      for all using (true) with check (true);
-create policy "acesso_dev_parametros"   on public.parametros   for all using (true) with check (true);
+-- Políticas de desenvolvimento / homologação aberta para rede interna CFT
+create policy "acesso_militares"      on public.militares      for all using (true) with check (true);
+create policy "acesso_afastamentos"   on public.afastamentos   for all using (true) with check (true);
+create policy "acesso_escalas"        on public.escalas        for all using (true) with check (true);
+create policy "acesso_eventos"        on public.eventos        for all using (true) with check (true);
+create policy "acesso_trocas_servico" on public.trocas_servico for all using (true) with check (true);
+create policy "acesso_parametros"     on public.parametros     for all using (true) with check (true);

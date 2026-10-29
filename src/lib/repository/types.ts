@@ -16,17 +16,23 @@ export interface DataRepository {
   subscribe(onChange: () => void): () => void;
 }
 
-export const COLLECTIONS: CollectionKey[] = ["militares", "afastamentos", "escalas", "eventos"];
+export const COLLECTIONS: CollectionKey[] = [
+  "militares",
+  "afastamentos",
+  "escalas",
+  "eventos",
+  "trocasServico",
+];
 
 /** Aplica um upsert de forma imutável (usado pela UI para atualização otimista). */
 export function applyUpsert<K extends CollectionKey>(db: Database, key: K, item: CollectionItem<K>): Database {
-  const lista = db[key] as CollectionItem<K>[];
+  const lista = (db[key] ?? []) as CollectionItem<K>[];
   const idx = lista.findIndex((x) => x.id === item.id);
   const nova = idx >= 0 ? lista.map((x, i) => (i === idx ? item : x)) : [...lista, item];
   return { ...db, [key]: nova, updatedAt: new Date().toISOString() };
 }
 
 export function applyRemove(db: Database, key: CollectionKey, id: string): Database {
-  const lista = db[key] as Array<{ id: string }>;
+  const lista = (db[key] ?? []) as Array<{ id: string }>;
   return { ...db, [key]: lista.filter((x) => x.id !== id), updatedAt: new Date().toISOString() };
 }

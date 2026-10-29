@@ -3,7 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { hojeISO } from "@/lib/dates";
 import { criarContexto, type Contexto } from "@/lib/engine/disponibilidade";
-import { applyRemove, applyUpsert, createRepository, type DataRepository } from "@/lib/repository";
+import {
+  applyRemove,
+  applyUpsert,
+  createRepository,
+  salvarConfiguracaoBackend,
+  type DataRepository,
+} from "@/lib/repository";
 import { criarSeed } from "@/lib/seed";
 import type { CollectionItem, CollectionKey, Database, Parametros } from "@/lib/types";
 
@@ -19,51 +25,94 @@ interface DataState {
   salvarParametros: (p: Parametros) => Promise<void>;
   substituirTudo: (db: Database) => Promise<void>;
   restaurarDemo: () => Promise<void>;
+  recarregar: () => Promise<void>;
+  conectarSupabase: (
+    url: string,
+    key: string,
+    migrarDadosLocais?: boolean,
+  ) => Promise<{ ok: boolean; mensagem: string }>;
+  desconectarSupabase: () => Promise<void>;
 }
 
 const DataContext = createContext<DataState | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const repoRef = useRef<DataRepository | null>(null);
+  const unsubRef = useRef<(() => void) | undefined>(undefined);
   const [db, setDb] = useState<Database | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [backendAtivo, setBackendAtivo] = useState<DataRepository["backend"]>("local");
   const [hoje, setHoje] = useState(() => hojeISO());
 
   const recarregar = useCallback(async () => {
     if (!repoRef.current) return;
     try {
-      setDb(await repoRef.current.load());
+      const carregado = await repoRef.current.load();
+      setDb(carregado);
+      setBackendAtivo(repoRef.current.backend);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
+  const inicializarRepo = useCallback(async (customRepo?: DataRepository) => {
+    unsubRef.current?.();
+    setCarregando(true);
+    try {
+      const repo = customRepo ?? (await createRepository());
+      repoRef.current = repo;
+      setBackendAtivo(repo.backend);
+      const loaded = await repo.load();
+      setDb(loaded);
+      unsubRef.current = repo.subscribe(() => void recarregar());
+      setErro(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCarregando(false);
+    }
+  }, [recarregar]);
+
   useEffect(() => {
-    let unsub: (() => void) | undefined;
     let ativo = true;
-    (async () => {
-      try {
-        const repo = await createRepository();
-        if (!ativo) return;
-        repoRef.current = repo;
-        setDb(await repo.load());
-        unsub = repo.subscribe(() => void recarregar());
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (ativo) setCarregando(false);
-      }
-    })();
+    void inicializarRepo();
     // Atualiza "hoje" na virada do dia (sistemas que ficam abertos no Quarto de Hora / CIC).
     const timer = setInterval(() => setHoje(hojeISO()), 60_000);
     return () => {
       ativo = false;
-      unsub?.();
+      unsubRef.current?.();
       clearInterval(timer);
     };
-  }, [recarregar]);
+  }, [inicializarRepo]);
+
+  const conectarSupabase = useCallback(
+    async (url: string, key: string, migrarDadosLocais = false) => {
+      try {
+        const { createClient } = await import("@supabase/supabase-js");
+        const { SupabaseRepository } = await import("@/lib/repository/supabaseRepository");
+        const client = createClient(url, key);
+        const repo = new SupabaseRepository(client);
+
+        if (migrarDadosLocais && db) {
+          await repo.replaceAll(db);
+        }
+
+        salvarConfiguracaoBackend("supabase", url, key);
+        await inicializarRepo(repo);
+        return { ok: true, mensagem: "Conectado ao Supabase com sucesso! Sincronização em tempo real ativa." };
+      } catch (err) {
+        return { ok: false, mensagem: (err as Error).message };
+      }
+    },
+    [db, inicializarRepo],
+  );
+
+  const desconectarSupabase = useCallback(async () => {
+    salvarConfiguracaoBackend("local");
+    await inicializarRepo();
+  }, [inicializarRepo]);
 
   /** Atualização otimista + persistência; em caso de falha, recarrega a base real. */
   const executar = useCallback(
@@ -112,15 +161,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ctx,
       carregando,
       erro,
-      backend: repoRef.current?.backend ?? null,
+      backend: backendAtivo,
       hoje,
       salvar,
       remover,
       salvarParametros,
       substituirTudo,
       restaurarDemo,
+      recarregar,
+      conectarSupabase,
+      desconectarSupabase,
     }),
-    [db, ctx, carregando, erro, hoje, salvar, remover, salvarParametros, substituirTudo, restaurarDemo],
+    [
+      db,
+      ctx,
+      carregando,
+      erro,
+      backendAtivo,
+      hoje,
+      salvar,
+      remover,
+      salvarParametros,
+      substituirTudo,
+      restaurarDemo,
+      recarregar,
+      conectarSupabase,
+      desconectarSupabase,
+    ],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
