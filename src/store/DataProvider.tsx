@@ -53,7 +53,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBackendAtivo(repoRef.current.backend);
       setErro(null);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[SisPesCFT] Falha ao recarregar repositório:", msg);
+      setErro(msg);
     }
   }, []);
 
@@ -69,7 +71,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unsubRef.current = repo.subscribe(() => void recarregar());
       setErro(null);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn("[SisPesCFT] Falha ao carregar repositório principal:", msg);
+
+      // Resiliência Militar: Fallback automático transparente para LocalStorage
+      // Garante prontidão operacional ininterrupta mesmo se as tabelas na nuvem não existirem ou houver falha de rede.
+      try {
+        const { LocalStorageRepository } = await import("@/lib/repository/localStorageRepository");
+        const fallbackRepo = new LocalStorageRepository();
+        repoRef.current = fallbackRepo;
+        setBackendAtivo("local");
+        const localDb = await fallbackRepo.load();
+        setDb(localDb);
+        unsubRef.current = fallbackRepo.subscribe(() => void recarregar());
+
+        if (
+          msg.includes("relation") ||
+          msg.includes("does not exist") ||
+          msg.includes("42P01") ||
+          msg.includes("militares")
+        ) {
+          setErro(
+            "Supabase conectado, mas as tabelas ainda não foram criadas no banco. O SisPesCFT ativou o Modo Local para garantir a continuidade operacional. Execute o script 'supabase/schema.sql' no Supabase para ativar a nuvem."
+          );
+        } else {
+          setErro(`Aviso Supabase: ${msg}. O SisPesCFT ativou o Modo Local para garantir a continuidade.`);
+        }
+      } catch (fallbackErr) {
+        console.error("[SisPesCFT] Fallback local falhou, carregando seed em memória:", fallbackErr);
+        const seed = criarSeed();
+        setDb(seed);
+        setErro(msg);
+      }
     } finally {
       setCarregando(false);
     }
@@ -202,6 +235,10 @@ export function useData(): DataState {
 /** Versão para telas internas: garante base carregada (o AppShell só renderiza após o carregamento). */
 export function useDb() {
   const d = useData();
-  if (!d.db || !d.ctx) throw new Error("Base de dados ainda não carregada");
+  if (!d.db || !d.ctx) {
+    const fallbackSeed = criarSeed();
+    const fallbackCtx = criarContexto(fallbackSeed);
+    return { ...d, db: d.db ?? fallbackSeed, ctx: d.ctx ?? fallbackCtx };
+  }
   return { ...d, db: d.db, ctx: d.ctx };
 }

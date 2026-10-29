@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -33,6 +33,12 @@ export function Navbar() {
   const [gestaoModalAberto, setGestaoModalAberto] = useState(false);
   const [supabaseModalAberto, setSupabaseModalAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setSupabaseModalAberto(true);
+    window.addEventListener("abrir-modal-supabase", handler);
+    return () => window.removeEventListener("abrir-modal-supabase", handler);
+  }, []);
 
   const links = [
     { href: "/escalas", label: "Escalas", icone: CalendarCheck },

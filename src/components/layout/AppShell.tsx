@@ -1,15 +1,16 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useData } from "@/store/DataProvider";
 import { useAuth } from "@/store/AuthProvider";
 import { Navbar } from "./Navbar";
 import { BottomNav } from "./BottomNav";
-import { Anchor, ShieldAlert, Loader2 } from "lucide-react";
+import { Anchor, ShieldAlert, Loader2, Database, X, RotateCcw } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { carregando, erro } = useData();
+  const { carregando, erro, db, ctx, restaurarDemo } = useData();
   const { usuario, pronto, abrirModal } = useAuth();
+  const [bannerVisivel, setBannerVisivel] = useState(true);
 
   // Se o usuário não estiver logado após carregar a sessão, abre modal de login institucional
   useEffect(() => {
@@ -41,16 +42,73 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Proteção de segurança: se a base de dados não estiver carregada, exibe tela de recuperação em vez de quebrar
+  if (!db || !ctx) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-navy-950 text-slate-100">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
+          <ShieldAlert className="w-12 h-12 text-amber-400 mx-auto" />
+          <h2 className="text-lg font-bold text-white">Base de Dados Temporariamente Indisponível</h2>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            {erro || "Ocorreu uma instabilidade na conexão com o banco de dados. Você pode restaurar os dados de demonstração locais para continuar operando."}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 pt-2">
+            <button
+              onClick={() => restaurarDemo()}
+              className="flex-1 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Restaurar Base Local
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition"
+            >
+              Recarregar
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isSupabasePending = !!(
+    erro &&
+    (erro.includes("Supabase") || erro.includes("tabelas") || erro.includes("schema") || erro.includes("42P01"))
+  );
+
   return (
     <div className="min-h-screen flex flex-col bg-navy-950 text-slate-100">
       {/* Navbar Superior */}
       <Navbar />
 
-      {/* Alerta de erro de base se houver */}
-      {erro && (
-        <div className="bg-rose-500/20 border-b border-rose-500/40 px-4 py-2 text-rose-300 text-xs flex items-center justify-center gap-2">
-          <ShieldAlert className="w-4 h-4 shrink-0" />
-          <span>Aviso de sincronização: {erro}</span>
+      {/* Alerta de erro de base / Supabase pendente com fallback gracioso */}
+      {erro && bannerVisivel && (
+        <div className="bg-amber-950/80 border-b border-amber-500/30 px-4 py-2 text-amber-200 text-xs flex flex-wrap items-center justify-between gap-2 shadow-inner">
+          <div className="flex items-center gap-2 max-w-4xl">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="leading-snug">{erro}</span>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            {isSupabasePending && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("abrir-modal-supabase"))}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40 transition text-[11px]"
+              >
+                <Database className="w-3.5 h-3.5 text-amber-300" />
+                <span>Ver Como Ativar Nuvem</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setBannerVisivel(false)}
+              className="p-1 rounded text-amber-400/80 hover:text-amber-200 hover:bg-amber-500/10 transition"
+              title="Dispensar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 

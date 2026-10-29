@@ -27,13 +27,30 @@ export class SupabaseRepository implements DataRepository {
       COLLECTIONS.map((c) => this.client.from(TABELA[c]).select("data")),
     );
     const erro = results.find((r) => r.error)?.error;
-    if (erro) throw new Error(`Supabase: ${erro.message}`);
+    if (erro) {
+      if (
+        erro.message.includes("does not exist") ||
+        erro.code === "42P01" ||
+        erro.message.includes("relation")
+      ) {
+        throw new Error(
+          `As tabelas do SisPesCFT ainda não foram criadas no Supabase (Código 42P01). Execute o script 'supabase/schema.sql' no SQL Editor do Supabase.`
+        );
+      }
+      throw new Error(`Supabase: ${erro.message}`);
+    }
 
     const params = await this.client
       .from(TABELA_PARAMETROS)
       .select("data")
       .eq("id", "default")
       .maybeSingle();
+
+    if (params.error && (params.error.code === "42P01" || params.error.message.includes("does not exist"))) {
+      throw new Error(
+        `As tabelas do SisPesCFT ainda não foram criadas no Supabase. Execute o script 'supabase/schema.sql' no SQL Editor do Supabase.`
+      );
+    }
 
     const [militares, afastamentos, escalas, eventos, trocasServico] = results.map(
       (r) => (r.data ?? []).map((row) => row.data),
