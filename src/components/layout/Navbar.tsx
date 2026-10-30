@@ -277,8 +277,8 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* Modal de Autenticação Oficial (CFT Auth) */}
-      <LoginModal aberto={modalAberto} onFechar={fecharModal} />
+      {/* Modal de Autenticação Oficial (CFT Auth) para troca de perfil */}
+      <LoginModal aberto={modalAberto} onFechar={fecharModal} bloqueante={false} />
 
       {/* Modal de Gestão de Acessos para Administradores */}
       {gestaoModalAberto && (

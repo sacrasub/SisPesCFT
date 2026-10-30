@@ -1473,7 +1473,22 @@ export function verificarEmailAutorizado(email: string): {
   motivo?: string;
 } {
   const norm = normalizarEmail(email);
-  if (!norm) return { autorizado: false, motivo: "E-mail não informado." };
+  if (!norm) return { autorizado: false, motivo: "E-mail ou NIP não informado." };
+
+  // 0. Se a entrada for um NIP (ex: "97.1057.91" ou "97105791" ou "06.0638.70")
+  const digitos = norm.replace(/\D/g, "");
+  if (digitos.length >= 6) {
+    for (const em in GAP_MILITARES_MAP) {
+      const item = GAP_MILITARES_MAP[em];
+      if (item.nip) {
+        const itemDigitos = item.nip.replace(/\D/g, "");
+        if (itemDigitos === digitos || item.nip.toLowerCase() === norm) {
+          const emailAlvo = item.email_funcional || item.email_pessoal || em;
+          return verificarEmailAutorizado(emailAlvo);
+        }
+      }
+    }
+  }
 
   if (isMasterAdmin(norm)) {
     return {
@@ -1610,15 +1625,16 @@ export async function loginComEmailFuncionalService(
   erro?: string;
 }> {
   const norm = normalizarEmail(email);
-  if (!norm) return { sucesso: false, erro: "Informe seu e-mail institucional." };
+  if (!norm) return { sucesso: false, erro: "Informe seu e-mail institucional ou NIP." };
   if (!pass) return { sucesso: false, erro: `Informe a senha de acesso (Padrão inicial: "${SENHA_PADRAO_INSTITUCIONAL}").` };
 
   const check = verificarEmailAutorizado(norm);
   if (!check.autorizado) {
-    return { sucesso: false, erro: check.motivo || `O e-mail "${norm}" não está autorizado.` };
+    return { sucesso: false, erro: check.motivo || `O e-mail/NIP "${norm}" não está autorizado.` };
   }
 
-  const statusSenha = obterStatusSenhaUsuario(norm);
+  const emailReal = check.usuario?.email_funcional || check.usuario?.email || norm;
+  const statusSenha = obterStatusSenhaUsuario(emailReal);
   if (!statusSenha.senhaValida(pass)) {
     return {
       sucesso: false,
@@ -1629,7 +1645,7 @@ export async function loginComEmailFuncionalService(
   }
 
   const authItem = check.usuario!;
-  const milItem = obterMilitarVinculado(norm);
+  const milItem = obterMilitarVinculado(emailReal);
   const usuarioSis = mapearParaUsuarioSisPes(authItem, milItem);
 
   if (typeof window !== "undefined") {

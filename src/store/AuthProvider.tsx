@@ -87,23 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Se não há sessão, define o usuário master padrão para uso imediato em ambiente de desenvolvimento
-      const masterUser: Usuario = {
-        id: "97.1057.91",
-        nome: "SO SACRAMENTO",
-        cargo: "SO (CI-SB) SACRAMENTO — Super Admin",
-        perfil: "ADMIN",
-        divisao: "PESSOAL",
-        email: "cristiano.sacramento@marinha.mil.br",
-        nip: "97.1057.91",
-        posto: "SO",
-        nomeGuerra: "SACRAMENTO",
-        roleCft: "super_admin",
-      };
-      setUsuario(masterUser);
-      window.localStorage.setItem(KEY_ACTIVE_SESSION, JSON.stringify(masterUser));
+      // Se não há sessão salva, o usuário permanece não autenticado (null)
+      // Bloqueio rigoroso: o militar DEVE se autenticar para acessar o sistema.
+      setUsuario(null);
     } catch (e) {
       console.warn("[SisPesCFT] Erro ao restaurar sessão:", e);
+      setUsuario(null);
     } finally {
       setPronto(true);
     }

@@ -1,23 +1,17 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useData } from "@/store/DataProvider";
 import { useAuth } from "@/store/AuthProvider";
 import { Navbar } from "./Navbar";
 import { BottomNav } from "./BottomNav";
+import { LoginModal } from "@/components/auth/LoginModal";
 import { Anchor, ShieldAlert, Loader2, Database, X, RotateCcw } from "lucide-react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { carregando, erro, db, ctx, restaurarDemo } = useData();
-  const { usuario, pronto, abrirModal } = useAuth();
+  const { usuario, pronto } = useAuth();
   const [bannerVisivel, setBannerVisivel] = useState(true);
-
-  // Se o usuário não estiver logado após carregar a sessão, abre modal de login institucional
-  useEffect(() => {
-    if (pronto && !usuario) {
-      abrirModal();
-    }
-  }, [pronto, usuario, abrirModal]);
 
   if (carregando || !pronto) {
     return (
@@ -38,6 +32,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </p>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GATEKEEPER DE SEGURANÇA MILITAR (CFT)
+  // Bloqueio rigoroso: pessoas não identificadas / não logadas NÃO ACESSAM o site.
+  // Nenhum dado operacional, lista de efetivo ou escala é exposto no DOM.
+  // ══════════════════════════════════════════════════════════════════════════
+  if (!usuario) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-navy-950 text-slate-100 relative">
+        <LoginModal aberto={true} onFechar={() => {}} bloqueante={true} />
       </div>
     );
   }

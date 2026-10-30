@@ -21,9 +21,10 @@ import { SENHA_PADRAO_INSTITUCIONAL } from "@/lib/auth-cft";
 interface LoginModalProps {
   aberto: boolean;
   onFechar: () => void;
+  bloqueante?: boolean;
 }
 
-export function LoginModal({ aberto, onFechar }: LoginModalProps) {
+export function LoginModal({ aberto, onFechar, bloqueante = false }: LoginModalProps) {
   const { loginGoogle, loginFuncional, trocarSenha, entrar } = useAuth();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -39,6 +40,17 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmaNovaSenha, setConfirmaNovaSenha] = useState("");
   const [modoDemo, setModoDemo] = useState(false);
+
+  // Fecha no ESC apenas se não for tela bloqueante obrigatória
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !bloqueante) {
+        onFechar();
+      }
+    };
+    if (aberto) window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [aberto, bloqueante, onFechar]);
 
   if (!aberto) return null;
 
@@ -71,12 +83,15 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
       const res = await loginFuncional(email, senha);
       if (res.sucesso) {
         if (res.precisaTrocarSenha) {
+          if (res.usuario?.email) {
+            setEmail(res.usuario.email);
+          }
           setModoTrocaSenha(true);
         } else {
           onFechar();
         }
       } else {
-        setErro(res.erro || "Verifique o e-mail e senha.");
+        setErro(res.erro || "Verifique o e-mail/NIP e senha.");
       }
     } catch (e: any) {
       setErro(e.message || "Erro ao autenticar.");
@@ -108,16 +123,25 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-[#060b14]/85 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div
+        className="fixed inset-0 z-50 bg-[#060b14]/90 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-200"
+        onClick={(e) => {
+          if (!bloqueante && e.target === e.currentTarget) {
+            onFechar();
+          }
+        }}
+      >
         <div className="bg-[#0b1329] border border-sky-800/60 rounded-2xl w-full max-w-[440px] p-6 sm:p-7 shadow-2xl text-slate-100 relative">
-          {/* Botão Fechar */}
-          <button
-            onClick={onFechar}
-            className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-lg transition"
-            title="Fechar"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Botão Fechar - Oculto se for tela de login obrigatório */}
+          {!bloqueante && (
+            <button
+              onClick={onFechar}
+              className="absolute right-4 top-4 text-slate-400 hover:text-white p-1 rounded-lg transition cursor-pointer"
+              title="Fechar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Cabeçalho Oficial Marinha do Brasil */}
           <div className="flex flex-col items-center text-center space-y-2 mb-5">
@@ -310,15 +334,15 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    E-mail Institucional
+                    NIP ou E-mail Institucional
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="usuario@marinha.mil.br"
-                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                    placeholder="NIP (ex: 97.1057.91) ou usuario@marinha.mil.br"
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition font-mono"
                   />
                 </div>
 
@@ -357,6 +381,9 @@ export function LoginModal({ aberto, onFechar }: LoginModalProps) {
                       )}
                     </button>
                   </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    💡 Primeiro acesso? Utilize a senha padrão institucional: <strong className="text-amber-300 font-mono">marinha123</strong>
+                  </p>
                 </div>
 
                 <button
