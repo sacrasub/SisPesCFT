@@ -9,7 +9,7 @@ const HOJE = "2026-10-29";
 const db = criarSeed(HOJE);
 
 // 1. Folha automática padrão (sem apontamentos manuais)
-let ctx = criarContexto(db, HOJE);
+let ctx = criarContexto(db);
 const folhaAuto = gerarFolhaPresencaDia(ctx, HOJE);
 const m1 = db.militares[0];
 const linhaAutoM1 = folhaAuto.find(l => l.militarId === m1.id);
@@ -58,7 +58,7 @@ db.parametros.folhasPresenca = {
   [HOJE]: folhaRegistro,
 };
 
-ctx = criarContexto(db, HOJE);
+ctx = criarContexto(db);
 const folhaManual = gerarFolhaPresencaDia(ctx, HOJE);
 
 const linhaM1 = folhaManual.find(l => l.militarId === m1.id);
@@ -83,7 +83,7 @@ folhaRegistro.homologadoPorNip = "97.1057.91";
 folhaRegistro.homologadoEm = new Date().toISOString();
 
 db.parametros.folhasPresenca[HOJE] = folhaRegistro;
-ctx = criarContexto(db, HOJE);
+ctx = criarContexto(db);
 const folhaHomologada = gerarFolhaPresencaDia(ctx, HOJE);
 const l1H = folhaHomologada.find(l => l.militarId === m1.id);
 
