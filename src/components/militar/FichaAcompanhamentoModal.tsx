@@ -461,8 +461,8 @@ export function FichaAcompanhamentoModal({
   if (!aberto || !militar || !infoSituacao) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-navy-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-navy-950 border border-slate-700/80 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-navy-950/80 backdrop-blur-md animate-fadeIn">
+      <div className="relative w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl max-h-[94vh] flex flex-col rounded-3xl bg-navy-950 border border-slate-700/80 shadow-2xl overflow-hidden">
         {/* Toast de Sucesso */}
         {msgSucesso && (
           <div className="absolute top-4 right-14 z-50 px-3.5 py-1.5 rounded-xl bg-emerald-500 text-navy-950 text-xs font-bold shadow-lg flex items-center gap-1.5 animate-bounce">
@@ -529,6 +529,41 @@ export function FichaAcompanhamentoModal({
                 <span>{infoSituacao.labelTabela}</span>
               </div>
 
+              {/* Botões de Ação da Ficha (Editar / Salvar) */}
+              {podeEditarMilitar(usuario) && (
+                <div className="flex items-center gap-1.5">
+                  {modoEdicao ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setModoEdicao(false)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-navy-900 border border-slate-700 transition"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSalvarFicha}
+                        disabled={salvando}
+                        className="px-4 py-1.5 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-gold-500/20 transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>{salvando ? "Gravando..." : "Salvar Ficha"}</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setModoEdicao(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-gold-400" />
+                      <span>Editar Dados</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Botão de Fechar */}
               <button
                 type="button"
@@ -585,121 +620,84 @@ export function FichaAcompanhamentoModal({
         {/* ═══════════════════════════════════════════════════════════════════ */}
         {/* NAVEGAÇÃO ENTRE ABAS DA FICHA INDIVIDUAL                          */}
         {/* ═══════════════════════════════════════════════════════════════════ */}
-        <div className="flex items-center justify-between px-4 sm:px-5 border-b border-slate-800 bg-navy-950/90 overflow-x-auto">
-          <div className="flex items-center gap-1 py-2">
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("resumo")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "resumo"
-                  ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>1. Resumo & Carreira</span>
-            </button>
+        <div className="flex items-center gap-1.5 px-4 sm:px-5 py-2 border-b border-slate-800 bg-navy-950/90 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("resumo")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "resumo"
+                ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>1. Resumo & Carreira</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("lotacao")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "lotacao"
-                  ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>2. Lotação & Funções (CF-XX)</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("lotacao")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "lotacao"
+                ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>2. Lotação & Funções (CF-XX)</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("escalas")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "escalas"
-                  ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
-              }`}
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>3. Escalas & Qualificação</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("escalas")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "escalas"
+                ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>3. Escalas & Qualificação</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("afastamentos")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "afastamentos"
-                  ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>4. Afastamentos ({afastamentosDoMilitar.length})</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("afastamentos")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "afastamentos"
+                ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>4. Afastamentos ({afastamentosDoMilitar.length})</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("acesso")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "acesso"
-                  ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
-              }`}
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>5. Acesso Digital</span>
-            </button>
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("acesso")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "acesso"
+                ? "bg-gold-500 text-navy-950 shadow-md shadow-gold-900/30"
+                : "text-slate-400 hover:text-slate-200 hover:bg-navy-900"
+            }`}
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>5. Acesso Digital</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() => setAbaAtiva("historico")}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                abaAtiva === "historico"
-                  ? "bg-sky-500 text-navy-950 shadow-md shadow-sky-900/30"
-                  : "text-sky-300 bg-sky-950/40 border border-sky-500/30 hover:bg-sky-900/50"
-              }`}
-            >
-              <History className="w-3.5 h-3.5 text-sky-400" />
-              <span>📜 6. Histórico Funcional ({linhaDoTempoConsolidada.length})</span>
-            </button>
-          </div>
-
-          {/* Botões de Ação da Ficha (Editar / Salvar) */}
-          {podeEditarMilitar(usuario) && (
-            <div className="flex items-center gap-2 py-2">
-              {modoEdicao ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setModoEdicao(false)}
-                    className="px-3 py-1 rounded-xl text-xs font-semibold text-slate-400 hover:bg-navy-900 transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSalvarFicha}
-                    disabled={salvando}
-                    className="px-3.5 py-1 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs uppercase tracking-wider shadow-md transition flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    <span>{salvando ? "Gravando..." : "Salvar Ficha"}</span>
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setModoEdicao(true)}
-                  className="px-3 py-1 rounded-xl bg-navy-900 hover:bg-navy-800 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-gold-400" />
-                  <span>Editar Dados</span>
-                </button>
-              )}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => setAbaAtiva("historico")}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+              abaAtiva === "historico"
+                ? "bg-sky-500 text-navy-950 shadow-md shadow-sky-900/30"
+                : "text-sky-300 bg-sky-950/40 border border-sky-500/30 hover:bg-sky-900/50"
+            }`}
+          >
+            <History className="w-3.5 h-3.5 text-sky-400" />
+            <span>📜 6. Histórico Funcional ({linhaDoTempoConsolidada.length})</span>
+          </button>
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -1424,6 +1422,17 @@ export function FichaAcompanhamentoModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {modoEdicao && podeEditarMilitar(usuario) && (
+              <button
+                type="button"
+                onClick={handleSalvarFicha}
+                disabled={salvando}
+                className="px-4 py-1.5 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs uppercase tracking-wider shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{salvando ? "Gravando..." : "Salvar Ficha"}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onFechar}

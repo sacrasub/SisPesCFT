@@ -53,7 +53,7 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-[#060b14]/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-[1920px] w-full mx-auto px-3 sm:px-6 2xl:px-8 h-16 flex items-center justify-between gap-3">
           {/* Logo & Marca Institucional */}
           <Link href="/" className="flex items-center gap-3 group">
             <div className="relative w-9 h-9 rounded-xl bg-slate-900 border border-sky-500/40 flex items-center justify-center shadow-md shadow-sky-950 group-hover:border-sky-400 transition p-1">

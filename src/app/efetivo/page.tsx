@@ -771,12 +771,15 @@ export default function EfetivoPage() {
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-left text-xs text-slate-200">
-            <thead className="bg-navy-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-200 border-collapse">
+            <thead className="bg-navy-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 sticky top-0 z-20">
               <tr>
-                <th className="py-3 px-3">Antig.</th>
-                <th className="py-3 px-3">NIP</th>
-                <th className="py-3 px-3">Militar (Guerra)</th>
+                <th className="py-3 px-3 sticky left-0 z-30 bg-navy-900 border-r border-slate-800 text-center w-[54px] min-w-[54px]">
+                  Antig.
+                </th>
+                <th className="py-3 px-3 sticky left-[54px] z-30 bg-navy-900 border-r border-slate-700/80 shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)] min-w-[170px] max-w-[220px]">
+                  Militar (Guerra / NIP)
+                </th>
                 <th className="py-3 px-3">Nome Civil & E-mails</th>
                 <th className="py-3 px-3">Posto / Esp.</th>
                 <th className="py-3 px-3">Lotação (Setor)</th>
@@ -814,35 +817,37 @@ export default function EfetivoPage() {
                 return (
                   <tr
                     key={m.id}
-                    className="hover:bg-navy-900/50 transition-colors"
+                    className="group hover:bg-navy-900/50 transition-colors"
                   >
                     {/* Antiguidade */}
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 sticky left-0 z-10 bg-[#060e1d] group-hover:bg-[#0c182b] transition-colors border-r border-slate-800 text-center">
                       <span className="inline-flex items-center gap-1 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-navy-950 border border-slate-700 text-sky-300">
                         {String(m.antiguidadeOrdem ?? 99).padStart(2, "0")}
                         {m.posto === "CF" || m.posto === "CC" ? " ⚓" : ""}
                       </span>
                     </td>
 
-                    {/* NIP */}
-                    <td className="py-2.5 px-3 font-mono text-slate-300 text-[11px] font-semibold whitespace-nowrap">
-                      {m.nip}
-                    </td>
-
-                    {/* Militar (Nome de Guerra) */}
-                    <td className="py-2.5 px-3 whitespace-nowrap">
+                    {/* Militar (Nome de Guerra & NIP) */}
+                    <td className="py-2.5 px-3 whitespace-nowrap sticky left-[54px] z-10 bg-[#060e1d] group-hover:bg-[#0c182b] transition-colors border-r border-slate-700/80 shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)]">
                       <div
-                        className="flex items-center gap-1.5 cursor-pointer group"
+                        className="flex items-center gap-2 cursor-pointer group/militar"
                         onClick={() => setMilitarParaFicha(m)}
                         title="Abrir Ficha de Acompanhamento Individual"
                       >
                         <PostoChip posto={m.posto} />
-                        <span className="font-bold text-slate-100 text-xs group-hover:text-sky-300 transition">
-                          {m.nomeGuerra}
-                        </span>
-                        <span className="px-1.5 py-0.2 rounded bg-sky-950/60 text-sky-300 border border-sky-500/30 text-[9px] font-bold group-hover:bg-sky-500 group-hover:text-navy-950 transition ml-0.5">
-                          Ficha
-                        </span>
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-100 text-xs group-hover/militar:text-sky-300 transition">
+                              {m.nomeGuerra}
+                            </span>
+                            <span className="px-1.5 py-0.2 rounded bg-sky-950/60 text-sky-300 border border-sky-500/30 text-[9px] font-bold group-hover/militar:bg-sky-500 group-hover/militar:text-navy-950 transition">
+                              Ficha
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-400 font-medium">
+                            {m.nip}
+                          </span>
+                        </div>
                       </div>
                     </td>
 

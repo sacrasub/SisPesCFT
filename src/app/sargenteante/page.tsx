@@ -908,8 +908,8 @@ export default function SargenteantePage() {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-950/90 text-slate-400 border-b border-slate-800 uppercase text-[10px] tracking-wider">
-                  <th className="py-2.5 px-3">#</th>
-                  <th className="py-2.5 px-3">Posto / Nome de Guerra</th>
+                  <th className="py-2.5 px-3 sticky left-0 z-20 bg-slate-950 border-r border-slate-800 text-center w-[46px] min-w-[46px]">#</th>
+                  <th className="py-2.5 px-3 sticky left-[46px] z-20 bg-slate-950 shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)] border-r border-slate-800 min-w-[170px]">Posto / Nome de Guerra</th>
                   <th className="py-2.5 px-3">Setor</th>
                   <th className="py-2.5 px-3 text-center">1º Tempo (Entrada)</th>
                   <th className="py-2.5 px-3 text-center">2º Tempo (Saída Alm.)</th>
@@ -925,11 +925,11 @@ export default function SargenteantePage() {
                   const isXXXX = l.codigo === "X";
                   const isSSVC = l.codigo === "SSVÇ";
                   return (
-                    <tr key={m.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-2 px-3 font-mono text-slate-500">
+                    <tr key={m.id} className="group hover:bg-slate-800/40 transition">
+                      <td className="py-2 px-3 font-mono text-slate-500 sticky left-0 z-10 bg-[#060b14] group-hover:bg-[#0c182b] transition-colors border-r border-slate-800/80 text-center">
                         {String(m.antiguidadeOrdem ?? 0).padStart(2, "0")}
                       </td>
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-3 sticky left-[46px] z-10 bg-[#060b14] group-hover:bg-[#0c182b] transition-colors shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)] border-r border-slate-800/80">
                         <div className="flex items-center gap-2">
                           <PostoChip posto={m.posto} />
                           <div>

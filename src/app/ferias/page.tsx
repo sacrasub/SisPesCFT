@@ -327,10 +327,10 @@ export default function FeriasPage() {
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-slate-800">
-          <table className="w-full text-left text-xs text-slate-200">
-            <thead className="bg-navy-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+          <table className="w-full text-left text-xs text-slate-200 border-collapse">
+            <thead className="bg-navy-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800 sticky top-0 z-20">
               <tr>
-                <th className="py-3 px-3">Militar</th>
+                <th className="py-3 px-3 sticky left-0 z-30 bg-navy-900 border-r border-slate-700/80 shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)] min-w-[170px]">Militar</th>
                 <th className="py-3 px-3">Divisão</th>
                 <th className="py-3 px-3">Tipo de Período</th>
                 <th className="py-3 px-3">Início</th>
@@ -356,9 +356,9 @@ export default function FeriasPage() {
                   return (
                     <tr
                       key={f.id}
-                      className="hover:bg-navy-900/50 transition-colors"
+                      className="group hover:bg-navy-900/50 transition-colors"
                     >
-                      <td className="py-2.5 px-3">
+                      <td className="py-2.5 px-3 sticky left-0 z-10 bg-[#060e1d] group-hover:bg-[#0c182b] transition-colors border-r border-slate-700/80 shadow-[4px_0_12px_-2px_rgba(0,0,0,0.6)] whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <PostoChip posto={m?.posto || "MN"} />
                           <span className="font-bold text-slate-100">

@@ -112,8 +112,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Conteúdo Principal com padding inferior para o dock mobile */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 pb-24 lg:pb-12">
+      {/* Conteúdo Principal com padding inferior para o dock mobile - fluido até 1920px */}
+      <main className="flex-1 max-w-[1920px] w-full mx-auto px-3 sm:px-6 2xl:px-8 py-5 pb-24 lg:pb-12 transition-all">
         {children}
       </main>
 
