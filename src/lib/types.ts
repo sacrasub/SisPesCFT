@@ -304,7 +304,43 @@ export type CodigoPresencaTempo =
   | "IN"
   | "MO"
   | "SVÇ"
-  | "FAINA";
+  | "FAINA"
+  | "FALTA"
+  | "ATRASO"
+  | "DISPENSA";
+
+export type TipoPresencaStatus =
+  | "PRESENTE"      // Presente no expediente normal
+  | "FALTA"         // Falta não justificada
+  | "ATRASO"        // Atrasado na entrada / parada
+  | "DISPENSA"      // Dispensado pelo Comando / Imediato
+  | "FAINA_EXTERNA" // Faina externa ou destacada
+  | "SERVICO"       // De serviço / quarto
+  | "AFASTADO";     // Férias, Licença ou Missão cadastrada
+
+export interface ApontamentoPresencaMilitar {
+  militarId: string;
+  status: TipoPresencaStatus;
+  tempo1?: string;
+  tempo2?: string;
+  tempo3?: string;
+  tempo4?: string;
+  observacao?: string;
+  modificadoPor?: string;
+  modificadoEm?: string;
+}
+
+export interface FolhaPresencaDiaRegistro {
+  data: ISODate;
+  statusFolha: "ABERTA" | "PREENCHIDA_CONTRAMESTRE" | "HOMOLOGADA_SARGENTEANTE";
+  preenchidoPorNome?: string;
+  preenchidoPorNip?: string;
+  preenchidoEm?: string;
+  homologadoPorNome?: string;
+  homologadoPorNip?: string;
+  homologadoEm?: string;
+  apontamentos: Record<string, ApontamentoPresencaMilitar>;
+}
 
 export interface LinhaFolhaPresenca {
   militarId: string;
@@ -318,6 +354,7 @@ export interface LinhaFolhaPresenca {
   prioridadeAplicada: 1 | 2 | 3 | 4 | 5;
   bloqueadoPorEscalaOuAusencia: boolean;
   incumbenciasAcumuladas: { titularNome: string; incumbencia: string; motivo: string }[];
+  apontamentoManual?: ApontamentoPresencaMilitar;
 }
 
 export type LegendaOficialCapitania =
@@ -435,6 +472,8 @@ export interface Parametros {
   regressoGeralTexto?: string;
   /** Data-base fixa da simulação das escalas (garante previsão estável entre telas). */
   dataBaseEscalas?: ISODate;
+  /** Folhas de presença diária preenchidas pelo Contramestre / homologadas pelo Sargenteante-Geral */
+  folhasPresenca?: Record<string, FolhaPresencaDiaRegistro>;
 }
 
 export interface Database {

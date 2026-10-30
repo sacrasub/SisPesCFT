@@ -70,6 +70,7 @@ import type {
   Restricao,
   RestricaoTipo,
   StatusSituacaoMilitar,
+  SituacaoMilitar,
   SetorCodigo,
   MotivoDispensaEscala,
 } from "@/lib/types";
@@ -140,6 +141,8 @@ export default function EfetivoPage() {
   const [formFuncao, setFormFuncao] = useState("");
   const [formIncumbencias, setFormIncumbencias] = useState("");
   const [formConselho, setFormConselho] = useState(false);
+  const [formSituacaoCadastral, setFormSituacaoCadastral] = useState<"PRONTO" | "DESEMBARCADO" | "INATIVO">("PRONTO");
+  const [formDesembarqueMotivo, setFormDesembarqueMotivo] = useState("");
 
   // Aba 3: Escalas & Dispensa OI 02-06D
   const [formEscalas, setFormEscalas] = useState<EscalaTipo[]>([]);
@@ -170,6 +173,8 @@ export default function EfetivoPage() {
     setFormFuncao("");
     setFormIncumbencias("");
     setFormConselho(false);
+    setFormSituacaoCadastral("PRONTO");
+    setFormDesembarqueMotivo("");
     setFormEscalas([]);
     setFormDispensaEscala("NENHUMA");
     setFormRestricaoMedicaArmado(false);
@@ -200,6 +205,13 @@ export default function EfetivoPage() {
     setFormFuncao(m.funcao || m.funcaoPrincipal || "");
     setFormIncumbencias((m.incumbencias || []).join(", "));
     setFormConselho(m.membroConselho);
+    const isDes = !m.ativo || m.situacao === "DESEMBARCADO";
+    setFormSituacaoCadastral(isDes ? "DESEMBARCADO" : m.situacao === "INATIVO" ? "INATIVO" : "PRONTO");
+    setFormDesembarqueMotivo(
+      m.funcao?.includes("Desembarcado")
+        ? m.funcao.replace(/^Desembarcado:\s*/, "")
+        : ""
+    );
 
     setFormEscalas([...m.escalas]);
     setFormDispensaEscala(m.dispensaEscala || "NENHUMA");
@@ -227,6 +239,21 @@ export default function EfetivoPage() {
     setModalMilitarAberto(true);
   };
 
+  // Re-embarcar Militar na Tripulação Ativa
+  const handleReembarcar = async (m: Militar) => {
+    if (!window.confirm(`Confirma o re-embarque de ${m.posto} ${m.nomeGuerra} na tripulação ativa da Capitania?`)) return;
+    const atualizado: Militar = {
+      ...m,
+      ativo: true,
+      situacao: "PRONTO",
+      funcao: m.funcao?.replace(/^Desembarcado:\s*/, "") || "Tripulante Ativo",
+      funcaoPrincipal: m.funcaoPrincipal?.replace(/^Ex-/, "") || undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    await salvar("militares", atualizado);
+    mostrarToast(`${atualizado.posto} ${atualizado.nomeGuerra} re-embarcado com sucesso na Capitania!`);
+  };
+
   // Salvar Militar no DB e Sincronizar com Autenticação
   const handleSalvarMilitar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,6 +271,22 @@ export default function EfetivoPage() {
       emailPessoalNorm ||
       `${formNomeGuerra.toLowerCase().replace(/[^a-z0-9]/g, "")}@marinha.mil.br`;
 
+    const isDesembarcadoForm = formSituacaoCadastral === "DESEMBARCADO";
+    const isInativoForm = formSituacaoCadastral === "INATIVO";
+    const ativoFinal = !isDesembarcadoForm && !isInativoForm;
+    const situacaoFinal: SituacaoMilitar = isDesembarcadoForm
+      ? "DESEMBARCADO"
+      : isInativoForm
+      ? "INATIVO"
+      : "PRONTO";
+
+    let funcaoFinal = formFuncao.trim() || undefined;
+    if (isDesembarcadoForm) {
+      funcaoFinal = formDesembarqueMotivo.trim()
+        ? `Desembarcado: ${formDesembarqueMotivo.trim()}`
+        : formFuncao.trim() || "Desembarcado da OM";
+    }
+
     const item: Militar = {
       id: militarEmEdicao?.id || uid("m"),
       nip: formNip.trim(),
@@ -254,8 +297,8 @@ export default function EfetivoPage() {
       antiguidadeOrdem: Number(formAntiguidade) || 64,
       setorCodigo: formSetorCodigo ? (formSetorCodigo as SetorCodigo) : undefined,
       divisao: formDivisao,
-      funcao: formFuncao.trim() || undefined,
-      funcaoPrincipal: formFuncao.trim() || undefined,
+      funcao: funcaoFinal,
+      funcaoPrincipal: funcaoFinal,
       incumbencias: incumbenciasArray.length > 0 ? incumbenciasArray : undefined,
       escalas: formEscalas,
       dispensaEscala: formDispensaEscala !== "NENHUMA" ? formDispensaEscala : undefined,
@@ -266,8 +309,8 @@ export default function EfetivoPage() {
       telefoneContato: formTelefone.trim() || undefined,
       roleAcesso: formRoleAcesso,
       restricoes: militarEmEdicao?.restricoes || [],
-      ativo: militarEmEdicao ? militarEmEdicao.ativo : true,
-      situacao: militarEmEdicao ? militarEmEdicao.situacao : "PRONTO",
+      ativo: ativoFinal,
+      situacao: situacaoFinal,
       createdAt: militarEmEdicao?.createdAt || agora,
       updatedAt: agora,
     };
@@ -601,6 +644,67 @@ export default function EfetivoPage() {
         </div>
       </div>
 
+      {/* Barra de Acesso Rápido por Situação Operacional */}
+      <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-navy-900/50 border border-slate-800/80">
+        <span className="text-[11px] font-bold text-slate-400 px-2 uppercase tracking-wider">Filtrar:</span>
+        <button
+          type="button"
+          onClick={() => setFiltroStatus("TODOS")}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+            filtroStatus === "TODOS"
+              ? "bg-slate-700 text-white font-bold"
+              : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+          }`}
+        >
+          Todos ({ctx.militares.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFiltroStatus("ATIVO")}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+            filtroStatus === "ATIVO"
+              ? "bg-emerald-600 text-white font-bold"
+              : "text-emerald-400 hover:bg-emerald-500/10"
+          }`}
+        >
+          ✓ Ativos / Embarcados
+        </button>
+        <button
+          type="button"
+          onClick={() => setFiltroStatus("FERIAS")}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+            filtroStatus === "FERIAS"
+              ? "bg-amber-600 text-white font-bold"
+              : "text-amber-400 hover:bg-amber-500/10"
+          }`}
+        >
+          🌴 Férias
+        </button>
+        <button
+          type="button"
+          onClick={() => setFiltroStatus("MISSAO")}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+            filtroStatus === "MISSAO"
+              ? "bg-sky-600 text-white font-bold"
+              : "text-sky-400 hover:bg-sky-500/10"
+          }`}
+        >
+          ✈️ Missões
+        </button>
+        <button
+          type="button"
+          onClick={() => setFiltroStatus("DESEMBARCADO")}
+          className={`px-3 py-1 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+            filtroStatus === "DESEMBARCADO"
+              ? "bg-slate-600 text-white font-bold shadow-md shadow-slate-600/30"
+              : "text-slate-300 bg-navy-800 hover:bg-navy-700 border border-slate-700"
+          }`}
+        >
+          <Anchor className="w-3.5 h-3.5 text-slate-300" />
+          <span>⚓ Militares Desembarcados ({ctx.militares.filter((m) => !m.ativo || m.situacao === "DESEMBARCADO").length})</span>
+        </button>
+      </div>
+
       {/* Filtros e Busca */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3.5 rounded-2xl bg-navy-900/80 border border-slate-800">
         <div className="relative sm:col-span-2">
@@ -922,11 +1026,23 @@ export default function EfetivoPage() {
                           <FileText className="w-3.5 h-3.5 text-sky-400" />
                         </button>
 
+                        {info.status === "DESEMBARCADO" && podeEditarMilitar(usuario) && (
+                          <button
+                            type="button"
+                            onClick={() => handleReembarcar(m)}
+                            className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition"
+                            title="Re-embarcar militar na OM (Reativar status PRONTO)"
+                          >
+                            <Anchor className="w-3 h-3 text-emerald-400" />
+                            <span>Re-embarcar</span>
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => abrirEditar(m)}
                           className="p-1.5 rounded-lg bg-navy-800 text-slate-300 hover:text-gold-400 hover:bg-navy-700 transition"
-                          title="Editar dados completos (Carreira, Lotação, Escalas e Acesso)"
+                          title="Editar dados completos (Carreira, Lotação, Desembarque, Escalas e Acesso)"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -1193,6 +1309,46 @@ export default function EfetivoPage() {
                 <p className="text-[10px] text-amber-300/80 mt-1">
                   Se o militar entrar em férias, licença ou missão, o substituto designado exibirá o badge de incumbência acumulada no painel.
                 </p>
+              </div>
+
+              {/* Condição Operacional & Desembarque */}
+              <div className="p-3.5 rounded-xl bg-navy-950 border border-slate-800 space-y-3">
+                <div>
+                  <label className="label text-slate-200">Condição Operacional na OM *</label>
+                  <select
+                    value={formSituacaoCadastral}
+                    onChange={(e) => setFormSituacaoCadastral(e.target.value as any)}
+                    className="input font-semibold text-slate-100 bg-navy-900"
+                  >
+                    <option value="PRONTO">✓ Embarcado / Pronto para o Serviço (Ativo na OM)</option>
+                    <option value="DESEMBARCADO">⚓ Desembarcado / Transferido da Capitania</option>
+                    <option value="INATIVO">🚫 Inativo / Afastamento Temporário</option>
+                  </select>
+                </div>
+
+                {formSituacaoCadastral === "DESEMBARCADO" && (
+                  <div className="p-3 rounded-lg bg-navy-900 border border-slate-700 space-y-2 animate-fadeIn">
+                    <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                      <Anchor className="w-3.5 h-3.5" />
+                      <span>Dados do Desembarque / Transferência</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 font-semibold block mb-1">
+                        OM de Destino / Motivo do Desembarque
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Transferido para Com9ºDN / BNCG / Reserva Remunerada"
+                        value={formDesembarqueMotivo}
+                        onChange={(e) => setFormDesembarqueMotivo(e.target.value)}
+                        className="input text-xs"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Militares desembarcados não concorrem mais às escalas da CFT e são preservados no histórico.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Membro do Conselho de Gestão */}

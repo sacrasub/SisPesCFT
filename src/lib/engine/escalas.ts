@@ -741,6 +741,8 @@ export function gerarDetalheDiarioOI0206D(ctx: Contexto, data: ISODate): Resulta
 export function gerarFolhaPresencaDia(ctx: Contexto, data: ISODate): LinhaFolhaPresenca[] {
   const ontem = addDays(data, -1);
   const regressoGeralAtivo = ctx.db.parametros.regressoGeralAtivo ?? false;
+  const folhaSalva = ctx.db.parametros.folhasPresenca?.[data];
+  const apontamentos = folhaSalva?.apontamentos;
 
   // Mapear quem está entrando de serviço hoje (D) e quem entrou ontem (D-1)
   const entrandoHoje = new Map<string, EscalaTipo>();
@@ -766,6 +768,93 @@ export function gerarFolhaPresencaDia(ctx: Contexto, data: ISODate): LinhaFolhaP
       incumbencia: inc.incumbencia,
       motivo: inc.motivo,
     }));
+
+    // ── APONTAMENTO MANUAL DO CONTRAMESTRE / SARGENTEANTE-GERAL ──
+    const ap = apontamentos?.[m.id];
+    if (ap) {
+      if (ap.status === "FALTA") {
+        return {
+          militarId: m.id,
+          data,
+          tempo1: "FALTA",
+          tempo2: "FALTA",
+          tempo3: "FALTA",
+          tempo4: "FALTA",
+          statusObservacao: `FALTA NÃO JUSTIFICADA${ap.observacao ? ` — ${ap.observacao}` : ""}`,
+          codigo: "FALTA",
+          prioridadeAplicada: 1,
+          bloqueadoPorEscalaOuAusencia: true,
+          incumbenciasAcumuladas,
+          apontamentoManual: ap,
+        };
+      }
+      if (ap.status === "ATRASO") {
+        const t1 = ap.tempo1 || "ATRASO";
+        return {
+          militarId: m.id,
+          data,
+          tempo1: t1,
+          tempo2: ap.tempo2 || "11:30",
+          tempo3: ap.tempo3 || "13:15",
+          tempo4: ap.tempo4 || "16:30",
+          statusObservacao: `ATRASO NA ENTRADA (${t1})${ap.observacao ? ` — ${ap.observacao}` : ""}`,
+          codigo: "ATRASO",
+          prioridadeAplicada: 5,
+          bloqueadoPorEscalaOuAusencia: false,
+          incumbenciasAcumuladas,
+          apontamentoManual: ap,
+        };
+      }
+      if (ap.status === "DISPENSA") {
+        return {
+          militarId: m.id,
+          data,
+          tempo1: "DISP",
+          tempo2: "DISP",
+          tempo3: "DISP",
+          tempo4: "DISP",
+          statusObservacao: `DISPENSADO${ap.observacao ? ` — ${ap.observacao}` : ""}`,
+          codigo: "DISPENSA",
+          prioridadeAplicada: 1,
+          bloqueadoPorEscalaOuAusencia: true,
+          incumbenciasAcumuladas,
+          apontamentoManual: ap,
+        };
+      }
+      if (ap.status === "FAINA_EXTERNA") {
+        return {
+          militarId: m.id,
+          data,
+          tempo1: "FAINA",
+          tempo2: "FAINA",
+          tempo3: "FAINA",
+          tempo4: "FAINA",
+          statusObservacao: `FAINA EXTERNA${ap.observacao ? ` — ${ap.observacao}` : ""}`,
+          codigo: "FAINA",
+          prioridadeAplicada: 4,
+          bloqueadoPorEscalaOuAusencia: false,
+          incumbenciasAcumuladas,
+          apontamentoManual: ap,
+        };
+      }
+      if (ap.status === "PRESENTE") {
+        const hExp = HORARIOS_PADRAO_4_TEMPOS.EXPEDIENTE_NORMAL;
+        return {
+          militarId: m.id,
+          data,
+          tempo1: ap.tempo1 || (regressoGeralAtivo ? "07:00" : hExp.t1),
+          tempo2: ap.tempo2 || hExp.t2,
+          tempo3: ap.tempo3 || hExp.t3,
+          tempo4: ap.tempo4 || hExp.t4,
+          statusObservacao: ap.observacao || `EXPEDIENTE NORMAL (${m.setorCodigo ?? m.divisao})`,
+          codigo: "PRESENTE",
+          prioridadeAplicada: 5,
+          bloqueadoPorEscalaOuAusencia: false,
+          incumbenciasAcumuladas,
+          apontamentoManual: ap,
+        };
+      }
+    }
 
     const afs = afastamentosNoDia(ctx, m.id, data).filter((a) => a.status !== "CANCELADO");
 

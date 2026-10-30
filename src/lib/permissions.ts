@@ -31,6 +31,25 @@ export const podeConfigurarEscala = isAdmin;
 export const podeGerenciarEventos = isAdmin;
 export const podeAdministrarDados = isAdmin;
 
+/** Contramestre pode preencher a presença diária dos militares (parada matinal/expediente). */
+export function podePreencherPresenca(u: Usuario | null): boolean {
+  if (!u) return false;
+  if (u.perfil === "ADMIN") return true; // Sargenteante-Geral
+  if (u.perfil === "DIVISAO" && u.divisao === "CONTRAMESTRES") return true;
+  if (u.cargo?.toLowerCase().includes("contramestre") || u.nome?.toLowerCase().includes("contramestre")) return true;
+  return false;
+}
+
+/** Sargenteante-Geral pode editar, retificar e homologar a presença. */
+export function podeHomologarPresenca(u: Usuario | null): boolean {
+  return isAdmin(u);
+}
+
+/** Imediato, Comando e todos os demais militares de bordo podem consultar a presença. */
+export function podeConsultarPresenca(_u: Usuario | null): boolean {
+  return true;
+}
+
 /** Divisões disponíveis no seletor de lançamento. */
 export function divisoesPermitidas(u: Usuario | null, todas: DivisaoId[]): DivisaoId[] {
   if (!u) return [];

@@ -389,7 +389,7 @@ teste("7. Alerta de reintegração (4×1 SO / 2×1 geral) e Detalhe de Emergênc
 
   // Escala só de SO usa limite 4×1
   const db2 = novoDb();
-  const sos = db2.militares.filter((m) => m.posto === "SO").slice(0, 4);
+  const sos = db2.militares.filter((m) => m.posto === "SO" && m.ativo !== false).slice(0, 4);
   const esSO: EscalaConfig = { ...escalaDe(db2, "CONTRAMESTRE"), id: "CONTRAMESTRE", restricoesBloqueantes: [] };
   for (const m of db2.militares) m.escalas = m.escalas.filter((e) => e !== "CONTRAMESTRE");
   for (const m of sos) { m.escalas.push("CONTRAMESTRE"); m.dispensaEscala = "NENHUMA"; m.qualificacoesServico = []; m.restricoes = []; }
