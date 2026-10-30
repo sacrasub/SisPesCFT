@@ -98,6 +98,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ENCERRAMENTO AUTOMÁTICO DE SESSÃO POR INATIVIDADE (30 MINUTOS)
+  // Segurança da Informação: impede que terminais de serviço fiquem abertos
+  // ══════════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (!usuario) return;
+    const TEMPO_LIMITE_MS = 30 * 60 * 1000; // 30 minutos
+    let timer: NodeJS.Timeout;
+
+    const resetarTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        window.localStorage.removeItem(KEY_ACTIVE_SESSION);
+        window.localStorage.removeItem("sispescft:session");
+        setUsuario(null);
+        setModalAberto(true);
+        console.warn("[SisPesCFT] Sessão encerrada automaticamente por inatividade.");
+      }, TEMPO_LIMITE_MS);
+    };
+
+    const eventos = ["mousedown", "keydown", "touchstart", "scroll"];
+    eventos.forEach((evt) => window.addEventListener(evt, resetarTimer, { passive: true }));
+    resetarTimer();
+
+    return () => {
+      clearTimeout(timer);
+      eventos.forEach((evt) => window.removeEventListener(evt, resetarTimer));
+    };
+  }, [usuario]);
+
   const abrirModal = useCallback(() => setModalAberto(true), []);
   const fecharModal = useCallback(() => setModalAberto(false), []);
 
@@ -141,8 +171,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const trocarSenha = useCallback((email: string, novaSenha: string) => {
-    salvarNovaSenhaUsuario(email, novaSenha);
+  const trocarSenha = useCallback(async (email: string, novaSenha: string) => {
+    await salvarNovaSenhaUsuario(email, novaSenha);
   }, []);
 
   const sair = useCallback(() => {

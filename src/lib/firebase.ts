@@ -6,7 +6,7 @@ import { getFirestore, type Firestore } from "firebase/firestore";
 export const firebaseConfig = {
   apiKey: "AIzaSyC_Yy4Z6_GxPhEoSAY2yAHHCt7Th0xnoT1Q",
   authDomain:
-    typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
+    typeof window !== "undefined" && window.location?.hostname?.includes("vercel.app")
       ? window.location.hostname
       : "agenda-cft-01.firebaseapp.com",
   projectId: "agenda-cft-01",

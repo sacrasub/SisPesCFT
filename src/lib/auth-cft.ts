@@ -11,6 +11,14 @@ import {
 } from "firebase/firestore";
 import type { Usuario, Perfil, DivisaoId, Posto } from "@/lib/types";
 
+import {
+  gerarHashSenha,
+  verificarHashSenha,
+  verificarBloqueioLogin,
+  registrarFalhaLogin,
+  limparFalhasLogin,
+} from "./security";
+
 export const SENHA_PADRAO_INSTITUCIONAL = "marinha123";
 
 export const MASTER_ADMIN_EMAILS = [
@@ -1335,9 +1343,9 @@ export const GAP_MILITARES_MAP: Record<string, MilitarMapItem> = {
   }
 };
 
-const KEY_AUTH_CACHE = "sispescft_auth_users_cache";
-const KEY_SENHAS_CACHE = "sispescft_user_passwords";
-const KEY_SOLICITACOES = "sispescft_solicitacoes_cache";
+export const KEY_AUTH_CACHE = "sispescft_auth_users_cache";
+export const KEY_SENHAS_CACHE = "sispescft_user_passwords";
+export const KEY_SOLICITACOES = "sispescft_solicitacoes_cache";
 export const KEY_ACTIVE_SESSION = "sispescft_active_session";
 
 export function normalizarEmail(email: string): string {
@@ -1373,37 +1381,86 @@ export function salvarCacheUsuarios(lista: UsuarioCftAuth[]) {
   }
 }
 
-export function obterStatusSenhaUsuario(email: string): { senhaAlterada: boolean; senhaValida: (pass: string) => boolean } {
+export function obterStatusSenhaUsuario(email: string): { senhaAlterada: boolean } {
   const norm = normalizarEmail(email);
   if (typeof window === "undefined") {
-    return { senhaAlterada: false, senhaValida: (p) => p === SENHA_PADRAO_INSTITUCIONAL };
+    return { senhaAlterada: false };
   }
   try {
     const raw = window.localStorage.getItem(KEY_SENHAS_CACHE);
     const senhas = raw ? JSON.parse(raw) : {};
-    if (senhas[norm]) {
+    return {
+      senhaAlterada: !!senhas[norm],
+    };
+  } catch {
+    return { senhaAlterada: false };
+  }
+}
+
+/**
+ * Validação criptográfica assíncrona de senha com SHA-256 e salt.
+ * Nunca compara nem armazena em texto puro.
+ */
+export async function obterStatusSenhaUsuarioAsync(email: string): Promise<{
+  senhaAlterada: boolean;
+  validarSenha: (pass: string) => Promise<boolean>;
+}> {
+  const norm = normalizarEmail(email);
+  if (typeof window === "undefined") {
+    return {
+      senhaAlterada: false,
+      validarSenha: async (p) => p.trim() === SENHA_PADRAO_INSTITUCIONAL,
+    };
+  }
+  try {
+    const raw = window.localStorage.getItem(KEY_SENHAS_CACHE);
+    const senhas = raw ? JSON.parse(raw) : {};
+    const entry = senhas[norm];
+
+    if (entry) {
       return {
         senhaAlterada: true,
-        senhaValida: (p: string) => p.trim() === senhas[norm],
+        validarSenha: async (p: string) => {
+          // 1. Padrão criptográfico: Objeto com hash SHA-256
+          if (typeof entry === "object" && entry.hash) {
+            return verificarHashSenha(p, norm, entry.hash);
+          }
+          // 2. Retrocompatibilidade: Se for texto puro herdado, valida e migra imediatamente para hash
+          if (typeof entry === "string") {
+            const match = p.trim() === entry.trim();
+            if (match) {
+              await salvarNovaSenhaUsuario(norm, p.trim());
+            }
+            return match;
+          }
+          return false;
+        },
       };
     }
   } catch {}
+
   return {
     senhaAlterada: false,
-    senhaValida: (p: string) => p.trim() === SENHA_PADRAO_INSTITUCIONAL,
+    validarSenha: async (p: string) => p.trim() === SENHA_PADRAO_INSTITUCIONAL,
   };
 }
 
-export function salvarNovaSenhaUsuario(email: string, novaSenha: string): void {
+export async function salvarNovaSenhaUsuario(email: string, novaSenha: string): Promise<void> {
   const norm = normalizarEmail(email);
   if (typeof window === "undefined") return;
   try {
     const raw = window.localStorage.getItem(KEY_SENHAS_CACHE);
     const senhas = raw ? JSON.parse(raw) : {};
-    senhas[norm] = novaSenha.trim();
+    // Criptografa imediatamente com salt derivado do militar
+    const hash = await gerarHashSenha(novaSenha, norm);
+    senhas[norm] = {
+      hash,
+      atualizadoEm: new Date().toISOString(),
+      algoritmo: "SHA-256/SALT",
+    };
     window.localStorage.setItem(KEY_SENHAS_CACHE, JSON.stringify(senhas));
   } catch (e) {
-    console.warn("[SisPesCFT] Erro ao gravar nova senha local:", e);
+    console.warn("[SisPesCFT] Erro ao gravar nova senha criptografada:", e);
   }
 }
 
@@ -1628,21 +1685,49 @@ export async function loginComEmailFuncionalService(
   if (!norm) return { sucesso: false, erro: "Informe seu e-mail institucional ou NIP." };
   if (!pass) return { sucesso: false, erro: `Informe a senha de acesso (Padrão inicial: "${SENHA_PADRAO_INSTITUCIONAL}").` };
 
+  // 1. Proteção Anti-Força Bruta: Bloqueio progressivo se houver excesso de falhas
+  const statusBloqueio = verificarBloqueioLogin(norm);
+  if (statusBloqueio.bloqueado) {
+    return {
+      sucesso: false,
+      erro: `Acesso temporariamente bloqueado por excesso de tentativas incorretas. Aguarde ${statusBloqueio.segundosRestantes} segundos para tentar novamente.`,
+    };
+  }
+
   const check = verificarEmailAutorizado(norm);
   if (!check.autorizado) {
     return { sucesso: false, erro: check.motivo || `O e-mail/NIP "${norm}" não está autorizado.` };
   }
 
   const emailReal = check.usuario?.email_funcional || check.usuario?.email || norm;
-  const statusSenha = obterStatusSenhaUsuario(emailReal);
-  if (!statusSenha.senhaValida(pass)) {
+  const statusSenha = await obterStatusSenhaUsuarioAsync(emailReal);
+  const senhaValida = await statusSenha.validarSenha(pass);
+
+  if (!senhaValida) {
+    const falha = registrarFalhaLogin(norm);
+    if (falha.bloqueado) {
+      return {
+        sucesso: false,
+        erro: `Múltiplas tentativas incorretas consecutivas. Acesso bloqueado por ${falha.segundosRestantes} segundos por segurança da OM.`,
+      };
+    }
+    const avisoTentativas =
+      falha.tentativasRestantes <= 2
+        ? ` (Atenção: resta(m) apenas ${falha.tentativasRestantes} tentativa(s) antes do bloqueio temporário)`
+        : "";
+
     return {
       sucesso: false,
-      erro: statusSenha.senhaAlterada
-        ? "Senha incorreta."
-        : `Senha incorreta. Para o primeiro acesso, utilize a senha padrão institucional: "${SENHA_PADRAO_INSTITUCIONAL}".`,
+      erro:
+        (statusSenha.senhaAlterada
+          ? "Senha incorreta."
+          : `Senha incorreta. Para o primeiro acesso, utilize a senha padrão institucional: "${SENHA_PADRAO_INSTITUCIONAL}".`) +
+        avisoTentativas,
     };
   }
+
+  // Login com sucesso: limpa histórico de falhas de força bruta
+  limparFalhasLogin(norm);
 
   const authItem = check.usuario!;
   const milItem = obterMilitarVinculado(emailReal);

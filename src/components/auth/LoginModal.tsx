@@ -100,7 +100,7 @@ export function LoginModal({ aberto, onFechar, bloqueante = false }: LoginModalP
     }
   };
 
-  const handleSalvarNovaSenha = (e: React.FormEvent) => {
+  const handleSalvarNovaSenha = async (e: React.FormEvent) => {
     e.preventDefault();
     if (novaSenha.length < 6) {
       setErro("A nova senha deve possuir no mínimo 6 dígitos.");
@@ -110,9 +110,16 @@ export function LoginModal({ aberto, onFechar, bloqueante = false }: LoginModalP
       setErro("As senhas digitadas não coincidem.");
       return;
     }
-    trocarSenha(email, novaSenha);
-    setModoTrocaSenha(false);
-    onFechar();
+    setCarregando(true);
+    try {
+      await trocarSenha(email, novaSenha);
+      setModoTrocaSenha(false);
+      onFechar();
+    } catch {
+      setErro("Erro ao salvar nova senha criptografada.");
+    } finally {
+      setCarregando(false);
+    }
   };
 
   const handleEsqueceuSenha = () => {

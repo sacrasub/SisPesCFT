@@ -31,6 +31,7 @@ import {
   cadastrarUsuarioIndividual,
   isMasterAdmin,
 } from "@/lib/auth-cft";
+import { mascararEmail, podeVisualizarDadosCompletos } from "@/lib/security";
 import {
   Users,
   Search,
@@ -869,10 +870,14 @@ export default function EfetivoPage() {
                         {emailPessoal && (
                           <span
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/30 font-mono text-[10px] text-emerald-300"
-                            title={`E-mail Google: ${emailPessoal}`}
+                            title={podeVisualizarDadosCompletos(usuario, m.id) ? `E-mail Pessoal: ${emailPessoal}` : "E-mail pessoal protegido (LGPD)"}
                           >
                             <span className="font-black text-[9px] text-emerald-400">G:</span>
-                            <span className="truncate max-w-[130px]">{emailPessoal}</span>
+                            <span className="truncate max-w-[130px]">
+                              {podeVisualizarDadosCompletos(usuario, m.id)
+                                ? emailPessoal
+                                : mascararEmail(emailPessoal)}
+                            </span>
                           </span>
                         )}
                       </div>

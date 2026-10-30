@@ -16,6 +16,22 @@ import { NextRequest, NextResponse } from "next/server";
  * }
  */
 export async function POST(req: NextRequest) {
+  // 1. Blindagem de Segurança da API: Validação de Origem e Proteção Anti-Abuso
+  const origin = req.headers.get("origin") || req.headers.get("referer");
+  const host = req.headers.get("host");
+  const internalSecret = req.headers.get("x-sispes-token");
+
+  // Se chamada vier de fora da aplicação sem token interno, rejeita com 403
+  const isMesmaOrigem = origin && host && (origin.includes(host) || origin.includes("localhost") || origin.includes("vercel.app"));
+  const isTokenValido = internalSecret === process.env.INTERNAL_NOTIFY_TOKEN || process.env.NODE_ENV === "development";
+
+  if (!isMesmaOrigem && !isTokenValido) {
+    return NextResponse.json(
+      { error: "Acesso não autorizado. Disparo de alertas restrito a origens verificadas da aplicação." },
+      { status: 403 }
+    );
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.NOTIFY_EMAIL_TO;
 
