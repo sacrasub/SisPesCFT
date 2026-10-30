@@ -118,6 +118,7 @@ export default function EfetivoPage() {
   const [situacaoSubstitutoId, setSituacaoSubstitutoId] = useState("");
   const [situacaoDocumento, setSituacaoDocumento] = useState("");
   const [situacaoMotivo, setSituacaoMotivo] = useState("");
+  const [salvandoSituacao, setSalvandoSituacao] = useState(false);
 
   // Modal de Restrição
   const [militarParaRestricao, setMilitarParaRestricao] = useState<Militar | null>(null);
@@ -454,34 +455,19 @@ export default function EfetivoPage() {
     setModalSituacaoAberto(true);
   };
 
-  // Salvar Alteração de Situação (Atualiza Militar e Sincroniza Afastamentos)
+  // Salvar Alteração de Situação (Atualiza Militar e Sincroniza Afastamentos Pontualmente)
   const handleSalvarSituacao = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!militarParaSituacao) return;
 
+    setSalvandoSituacao(true);
     const agora = new Date().toISOString();
     let militarAtualizado: Militar = { ...militarParaSituacao, updatedAt: agora };
-    let novosAfastamentos = [...db.afastamentos];
+    let afItemCriado: Afastamento | null = null;
 
     if (novaSituacao === "ATIVO") {
       militarAtualizado.ativo = true;
       militarAtualizado.situacao = "PRONTO";
-      novosAfastamentos = novosAfastamentos.map((a) => {
-        if (
-          a.militarIds.includes(militarAtualizado.id) &&
-          a.status === "CONFIRMADO"
-        ) {
-          if (a.inicio <= hoje && (a.terminoAsd || a.fim >= hoje)) {
-            return {
-              ...a,
-              fim: hoje,
-              terminoAsd: false,
-              updatedAt: agora,
-            };
-          }
-        }
-        return a;
-      });
     } else if (novaSituacao === "DESEMBARCADO") {
       militarAtualizado.ativo = false;
       militarAtualizado.situacao = "DESEMBARCADO";
@@ -495,7 +481,7 @@ export default function EfetivoPage() {
       militarAtualizado.ativo = true;
       militarAtualizado.situacao = "FERIAS";
       const sub = situacaoSubtipo.trim() || "Férias Regulamentares (1º período)";
-      const afItem: Afastamento = {
+      afItemCriado = {
         id: uid("af"),
         categoria: "FERIAS",
         subtipo: sub,
@@ -512,12 +498,11 @@ export default function EfetivoPage() {
         createdAt: agora,
         updatedAt: agora,
       };
-      novosAfastamentos.push(afItem);
     } else if (novaSituacao === "MISSAO") {
       militarAtualizado.ativo = true;
       militarAtualizado.situacao = "MISSAO";
       const tit = situacaoTitulo.trim() || "Missão / Operação Fluvial";
-      const afItem: Afastamento = {
+      afItemCriado = {
         id: uid("af"),
         categoria: "MISSAO",
         subtipo: tit,
@@ -536,14 +521,13 @@ export default function EfetivoPage() {
         createdAt: agora,
         updatedAt: agora,
       };
-      novosAfastamentos.push(afItem);
     } else if (novaSituacao === "LICENCA") {
       militarAtualizado.ativo = true;
       militarAtualizado.situacao = situacaoSubtipo.includes("LTSPF")
         ? "LTSPF"
         : "LTS";
       const sub = situacaoSubtipo.trim() || "LTS – Licença para Tratamento de Saúde";
-      const afItem: Afastamento = {
+      afItemCriado = {
         id: uid("af"),
         categoria: "LICENCA",
         subtipo: sub,
@@ -561,28 +545,55 @@ export default function EfetivoPage() {
         createdAt: agora,
         updatedAt: agora,
       };
-      novosAfastamentos.push(afItem);
     }
 
-    await substituirTudo({
-      ...db,
-      militares: db.militares.map((m) =>
-        m.id === militarAtualizado.id ? militarAtualizado : m
-      ),
-      afastamentos: novosAfastamentos,
-    });
+    try {
+      // 1. Salva militar pontualmente (rápido, atômico e otimista)
+      await salvar("militares", militarAtualizado);
 
-    setModalSituacaoAberto(false);
-    setMilitarParaSituacao(null);
-    mostrarToast(`Situação de ${militarAtualizado.posto} ${militarAtualizado.nomeGuerra} atualizada na OM.`);
+      // 2. Se for retorno a ATIVO, finaliza afastamentos correntes
+      if (novaSituacao === "ATIVO") {
+        for (const a of db.afastamentos) {
+          if (
+            a.militarIds.includes(militarAtualizado.id) &&
+            a.status === "CONFIRMADO" &&
+            a.inicio <= hoje &&
+            (a.terminoAsd || a.fim >= hoje)
+          ) {
+            await salvar("afastamentos", {
+              ...a,
+              fim: hoje,
+              terminoAsd: false,
+              updatedAt: agora,
+            });
+          }
+        }
+      } else if (afItemCriado) {
+        // 3. Se criou novo afastamento (Férias, Missão, Licença), salva apenas ele
+        await salvar("afastamentos", afItemCriado);
+      }
+
+      setModalSituacaoAberto(false);
+      setMilitarParaSituacao(null);
+      mostrarToast(`Situação de ${militarAtualizado.posto} ${militarAtualizado.nomeGuerra} atualizada na OM.`);
+    } catch (err) {
+      console.error("Erro ao salvar situação:", err);
+      mostrarToast("Erro ao atualizar situação do militar", "erro");
+    } finally {
+      setSalvandoSituacao(false);
+    }
   };
 
-  // Militares ordenados por antiguidade e filtrados
+  // Militares ordenados por antiguidade e filtrados (da base completa db.militares para listar ativos, desembarcados e inativos)
   const militaresFiltrados = useMemo(() => {
-    return ctx.militares
+    return db.militares
       .filter((m) => {
         if (filtroDivisao !== "TODAS" && m.divisao !== filtroDivisao)
           return false;
+        if (filtroStatus === "ATIVO") {
+          const info = obterStatusSituacao(ctx, m, hoje);
+          return info.status === "ATIVO";
+        }
         if (filtroStatus !== "TODOS") {
           const info = obterStatusSituacao(ctx, m, hoje);
           if (info.status !== filtroStatus) return false;
@@ -600,7 +611,7 @@ export default function EfetivoPage() {
         return true;
       })
       .sort(porAntiguidade);
-  }, [ctx, filtroDivisao, filtroStatus, busca, hoje]);
+  }, [db.militares, ctx, filtroDivisao, filtroStatus, busca, hoje]);
 
   return (
     <div className="space-y-6">
@@ -656,7 +667,7 @@ export default function EfetivoPage() {
               : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
           }`}
         >
-          Todos ({ctx.militares.length})
+          Todos ({db.militares.length})
         </button>
         <button
           type="button"
@@ -667,7 +678,7 @@ export default function EfetivoPage() {
               : "text-emerald-400 hover:bg-emerald-500/10"
           }`}
         >
-          ✓ Ativos / Embarcados
+          ✓ Ativos / Embarcados ({db.militares.filter((m) => m.ativo && m.situacao !== "DESEMBARCADO" && m.situacao !== "INATIVO").length})
         </button>
         <button
           type="button"
@@ -701,7 +712,7 @@ export default function EfetivoPage() {
           }`}
         >
           <Anchor className="w-3.5 h-3.5 text-slate-300" />
-          <span>⚓ Militares Desembarcados ({ctx.militares.filter((m) => !m.ativo || m.situacao === "DESEMBARCADO").length})</span>
+          <span>⚓ Militares Desembarcados ({db.militares.filter((m) => !m.ativo || m.situacao === "DESEMBARCADO").length})</span>
         </button>
       </div>
 
@@ -2074,9 +2085,17 @@ export default function EfetivoPage() {
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-navy-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-sky-900/40 transition"
+                disabled={salvandoSituacao}
+                className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-navy-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-sky-900/40 transition disabled:opacity-50 flex items-center gap-1.5"
               >
-                Salvar Alteração
+                {salvandoSituacao ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-navy-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <span>Salvar Alteração</span>
+                )}
               </button>
             </div>
           </form>
