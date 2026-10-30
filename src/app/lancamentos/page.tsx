@@ -714,9 +714,9 @@ export default function LancamentosPage() {
               <button
                 type="button"
                 onClick={() => {
-                  // Selecionar todos da divisão
+                  // Selecionar todos da divisão (apenas prontos/embarcados)
                   const ids = ctx.militares
-                    .filter((m) => m.divisao === formDivisao)
+                    .filter((m) => m.divisao === formDivisao && m.ativo !== false && m.situacao !== "DESEMBARCADO")
                     .map((m) => m.id);
                   setFormMilitares(ids);
                 }}
@@ -727,39 +727,47 @@ export default function LancamentosPage() {
             </div>
 
             <div className="p-2.5 rounded-xl bg-navy-950/80 border border-slate-800 max-h-48 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {ctx.militares.map((m) => {
-                const checked = formMilitares.includes(m.id);
-                return (
-                  <label
-                    key={m.id}
-                    className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition border text-xs ${
-                      checked
-                        ? "bg-navy-800 border-gold-500/40 text-slate-100"
-                        : "bg-navy-900/40 border-transparent text-slate-300 hover:bg-navy-900"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setFormMilitares([...formMilitares, m.id]);
-                        } else {
-                          setFormMilitares(
-                            formMilitares.filter((id) => id !== m.id)
-                          );
-                        }
-                      }}
-                      className="rounded border-slate-700 bg-navy-900 text-gold-500 focus:ring-gold-400"
-                    />
-                    <PostoChip posto={m.posto} />
-                    <span className="font-semibold">{m.nomeGuerra}</span>
-                    <span className="text-[10px] text-slate-500 ml-auto">
-                      {DIVISAO_MAP[m.divisao]?.sigla}
-                    </span>
-                  </label>
-                );
-              })}
+              {ctx.militares
+                .filter((m) => (m.ativo !== false && m.situacao !== "DESEMBARCADO" && m.situacao !== "INATIVO") || formMilitares.includes(m.id))
+                .map((m) => {
+                  const checked = formMilitares.includes(m.id);
+                  const isDesembarcado = m.ativo === false || m.situacao === "DESEMBARCADO";
+                  return (
+                    <label
+                      key={m.id}
+                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition border text-xs ${
+                        checked
+                          ? "bg-navy-800 border-gold-500/40 text-slate-100"
+                          : "bg-navy-900/40 border-transparent text-slate-300 hover:bg-navy-900"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormMilitares([...formMilitares, m.id]);
+                          } else {
+                            setFormMilitares(
+                              formMilitares.filter((id) => id !== m.id)
+                            );
+                          }
+                        }}
+                        className="rounded border-slate-700 bg-navy-900 text-gold-500 focus:ring-gold-400"
+                      />
+                      <PostoChip posto={m.posto} />
+                      <span className="font-semibold">{m.nomeGuerra}</span>
+                      {isDesembarcado && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                          Desembarcado
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-500 ml-auto">
+                        {DIVISAO_MAP[m.divisao]?.sigla}
+                      </span>
+                    </label>
+                  );
+                })}
             </div>
           </div>
 
