@@ -2105,6 +2105,7 @@ export default function EfetivoPage() {
         militar={militarParaFicha}
         aberto={!!militarParaFicha}
         onFechar={() => setMilitarParaFicha(null)}
+        onMilitarAtualizado={setMilitarParaFicha}
       />
     </div>
   );

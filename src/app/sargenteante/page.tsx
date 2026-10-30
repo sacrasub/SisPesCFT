@@ -1460,6 +1460,7 @@ export default function SargenteantePage() {
         militar={militarParaFicha}
         aberto={!!militarParaFicha}
         onFechar={() => setMilitarParaFicha(null)}
+        onMilitarAtualizado={setMilitarParaFicha}
       />
     </div>
   );

@@ -78,6 +78,7 @@ interface FichaAcompanhamentoModalProps {
   militar: Militar | null;
   aberto: boolean;
   onFechar: () => void;
+  onMilitarAtualizado?: (militar: Militar) => void;
   abaInicial?: AbaFicha;
 }
 
@@ -90,13 +91,24 @@ export type AbaFicha =
   | "historico";
 
 export function FichaAcompanhamentoModal({
-  militar,
+  militar: militarProp,
   aberto,
   onFechar,
+  onMilitarAtualizado,
   abaInicial = "resumo",
 }: FichaAcompanhamentoModalProps) {
   const { db, ctx, hoje, salvar, substituirTudo } = useDb();
   const { usuario } = useAuth();
+
+  // Sempre resolve a versão mais recente e reativa do militar a partir do banco de dados (db.militares)
+  const militar = useMemo(() => {
+    if (!militarProp) return null;
+    return (
+      db.militares.find(
+        (m) => m.id === militarProp.id || (m.nip && m.nip === militarProp.nip)
+      ) || militarProp
+    );
+  }, [db.militares, militarProp]);
 
   const [abaAtiva, setAbaAtiva] = useState<AbaFicha>(abaInicial);
   const [modoEdicao, setModoEdicao] = useState(false);
@@ -260,6 +272,7 @@ export function FichaAcompanhamentoModal({
     };
 
     await salvar("militares", atualizado);
+    onMilitarAtualizado?.(atualizado);
 
     // Sincroniza Auth
     try {
@@ -307,6 +320,7 @@ export function FichaAcompanhamentoModal({
     };
 
     await salvar("militares", atualizado);
+    onMilitarAtualizado?.(atualizado);
     setModalNovoHistorico(false);
     setNovoHistTitulo("");
     setNovoHistDesc("");
@@ -324,6 +338,7 @@ export function FichaAcompanhamentoModal({
       updatedAt: new Date().toISOString(),
     };
     await salvar("militares", atualizado);
+    onMilitarAtualizado?.(atualizado);
     setMsgSucesso("Registro removido do histórico.");
     setTimeout(() => setMsgSucesso(null), 3000);
   };
