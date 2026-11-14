@@ -1,5 +1,6 @@
 import { addDays, diaSemana, hojeISO } from "./dates";
 import { DB_VERSION } from "./constants";
+import dados2026Raw from "./dados2026.json";
 import type {
   Afastamento,
   AfastamentoCategoria,
@@ -12,8 +13,32 @@ import type {
   Militar,
   Posto,
   QualificacaoPostoServico,
+  RegistroHistoricoMilitar,
   Restricao,
+  SaldoPontosEscala,
+  SituacaoMilitar,
 } from "./types";
+
+interface Dados2026Militar {
+  ordem: number;
+  posto: Posto;
+  especialidade: string;
+  nomeCompleto: string;
+  obsOdt: string;
+  escalas: EscalaTipo[];
+  semEsprac: boolean;
+  faltaQualificarCtr: boolean;
+  situacao: SituacaoMilitar;
+  pontosEscala: SaldoPontosEscala;
+  historico: RegistroHistoricoMilitar[];
+}
+
+const dados2026 = dados2026Raw as {
+  geradoEm: string;
+  nipsRemover: string[];
+  militaresPorNip: Record<string, Dados2026Militar>;
+  afastamentos: Afastamento[];
+};
 
 export { DB_VERSION };
 
@@ -755,139 +780,82 @@ export function criarSeed(hoje: string = hojeISO()): Database {
       emailFuncional: "levy.macedo@marinha.mil.br",
       emailPessoal: "levycastro75@gmail.com",
     }),
+    mil("m_marla", "CB", "MARLA", "Marla Ingridh Rocha Guedes", "25.4263.20", "CONTRAMESTRES", ["CONTRAMESTRE"], {
+      especialidade: "RM2-PD",
+      setorCodigo: "CF-33",
+      funcao: "Contramestre / Serviços Gerais",
+      funcaoPrincipal: "Contramestre / Serviços Gerais (CF-33)",
+    }),
   ];
 
-  // ── Restrições reais e de demonstração do motor ──────────────────────────
+  // ── Restrições reais ─────────────────────────────────────────────────────
   militares.find((m) => m.id === "m10")!.restricoes = [
-    res("r-souza", "MEDICA", T(-90), T(60), "LTSPF — Substituído nas funções pelo 3ºSG-EL Uchoa"),
+    res("r-souza", "MEDICA", "2026-01-01", "2026-12-31", "LTSPF — Conforme SERVIÇO DA TRIPULAÇÃO.odt"),
   ];
   militares.find((m) => m.id === "m23")!.restricoes = [
-    res("r-nilton", "MEDICA", T(-60), T(90), "LTS Prolongada (Seção de Saúde CF-34)"),
-  ];
-  militares.find((m) => m.id === "m40")!.restricoes = [
-    res("r-marinho", "SEM_SRAK", T(-15), T(20), "Período de Instalação / Concluindo Papeleta OI 02-06D"),
+    res("r-nilton", "MEDICA", "2026-01-01", "2026-12-31", "LTS — Conforme SERVIÇO DA TRIPULAÇÃO.odt"),
   ];
 
   // ── Membros do Conselho de Gestão (CF-06) ────────────────────────────────
-  (["m01", "m02", "m03", "m04", "m05", "m09"] as string[]).forEach((id) => {
+  (["m01", "m02", "m03", "m05", "m09"] as string[]).forEach((id) => {
     const m = militares.find((x) => x.id === id);
     if (m) m.membroConselho = true;
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // AFASTAMENTOS E ALOCAÇÕES DO PLANO SEMANAL (com Substituto e suporte a ASD)
-  // ─────────────────────────────────────────────────────────────────────────
-  let afSeq = 0;
-  const af = (
-    categoria: AfastamentoCategoria,
-    divisao: DivisaoId,
-    subtipo: string,
-    titulo: string,
-    ini: number,
-    fim: number,
-    militarIds: string[],
-    status: AfastamentoStatus = "CONFIRMADO",
-    extra: Partial<Afastamento> = {},
-  ): Afastamento => ({
-    id: `a${String(++afSeq).padStart(3, "0")}`,
-    categoria,
-    divisao,
-    subtipo,
-    titulo,
-    inicio: T(ini),
-    fim: T(fim),
-    militarIds,
-    status,
-    impactaEscala: categoria !== "OUTRO",
-    criadoPor: divisao === "PESSOAL" ? "Sargenteante-Geral (CF-31)" : `Encarregado ${divisao}`,
-    createdAt: agora,
-    updatedAt: agora,
-    ...extra,
-  });
+  // ── Aplicar dados REAIS de 2026 (01/01/2026 a 14/11/2026) ────────────────
+  const removerSet = new Set(dados2026.nipsRemover);
+  const militaresReais2026: Militar[] = militares
+    .filter((m) => !removerSet.has(m.nip) && !!dados2026.militaresPorNip[m.nip])
+    .map((m) => {
+      const real = dados2026.militaresPorNip[m.nip];
+      const restricoes: Restricao[] = [...m.restricoes];
+      if (real.semEsprac && !restricoes.some((r) => r.tipo === "SEM_ESPRAC")) {
+        restricoes.push({
+          id: `r-esprac-${m.id}`,
+          tipo: "SEM_ESPRAC",
+          inicio: "2026-01-01",
+          fim: null,
+          descricao: "Sem ESPRAC (SERVIÇO DA TRIPULAÇÃO.odt)",
+        });
+      }
+      const qualificacoesServico: QualificacaoPostoServico[] = real.escalas.map((posto) => {
+        if (real.faltaQualificarCtr && posto === "CONTRAMESTRE") {
+          return {
+            posto,
+            papeletaConcluida: false,
+            servicosPraticosAcompanhados: 1,
+            habilitado: false,
+          };
+        }
+        return {
+          posto,
+          papeletaConcluida: true,
+          servicosPraticosAcompanhados: 4,
+          numeroOsPublicacao: "OS CFT/2026",
+          habilitado: true,
+        };
+      });
+      return {
+        ...m,
+        posto: real.posto,
+        especialidade: real.especialidade || m.especialidade,
+        nomeCompleto: toTitleCase(real.nomeCompleto),
+        antiguidadeOrdem: real.ordem,
+        escalas: real.escalas,
+        qualificacoesServico,
+        restricoes,
+        situacao: real.situacao,
+        ativo: true,
+        pontosEscala: real.pontosEscala,
+        historico: real.historico,
+      };
+    })
+    .sort((a, b) => (a.antiguidadeOrdem ?? 999) - (b.antiguidadeOrdem ?? 999));
 
-  const afastamentos: Afastamento[] = [
-    // 1. LTSPF do SO Souza (Substituído pelo 3SG Uchoa)
-    af("LICENCA", "PESSOAL", "LTSPF – Pessoa da Família", "LTSPF — SO-MO Souza (Substituído por 3ºSG-EL Uchoa)", -60, 45, ["m10"], "CONFIRMADO", {
-      militarSubstitutoId: "m31",
-      terminoAsd: false,
-      documentoReferencia: "Portaria CFT / CF-34",
-    }),
-    // 2. LTS Prolongada do 2SG Nilton Carvalho
-    af("LICENCA", "PESSOAL", "LTS – Licença para Tratamento de Saúde", "LTS — 2ºSG-MA Nilton Carvalho", -45, 60, ["m23"], "CONFIRMADO", {
-      militarSubstitutoId: "m37",
-      terminoAsd: false,
-      documentoReferencia: "Laudo JRS / CF-34",
-    }),
-    // 3. Missão Mutirum III (Com término ASD — Até Segunda Determinação)
-    af("MISSAO", "OPERACOES", "MISSÃO MUTIRUM III", "Missão Mutirum III — Calha do Solimões (23JAN A ASD)", -5, 15, ["m13", "m14", "m43", "m60"], "CONFIRMADO", {
-      local: "Calha do Rio Solimões / Manaus",
-      terminoAsd: true,
-      militarSubstitutoId: "m59", // MN Garrido cobrindo MN Grande a bordo
-      documentoReferencia: "OS Com9ºDN / Mutirum III",
-    }),
-    // 4. Inspeção Naval Diária (06:30 | 11:30 | 13:00 | 16:00)
-    af("INSPECAO_NAVAL", "STA", "INSPEÇÃO NAVAL", "Inspeção Naval Diária — Rio Solimões (06:30 às 16:00)", 0, 0, ["m15", "m42"], "CONFIRMADO", {
-      local: "Orla de Tabatinga / Benjamin Constant",
-      militarSubstitutoId: "m26",
-      impactaEscala: false,
-      horarioEspecifico: { t1: "06:30", t2: "11:30", t3: "13:00", t4: "16:00" },
-    }),
-    // 5. Aula no Curso CFAQ-MFM (X X X X — INSTRUTOR – CFAQ-MFM T1-2026)
-    af("CURSO", "EPM", "INSTRUTOR – CFAQ-MFM T1-2026", "Ministrar aula em curso do EPM — CFAQ-MFM T1-2026", 0, 4, ["m25", "m54"], "CONFIRMADO", {
-      local: "Salas de Aula CF-11 (CFT)",
-      militarSubstitutoId: "m29",
-      documentoReferencia: "OS Instrutores Eventuais EPM",
-    }),
-    // 6. Inspeção Naval de Longa Duração / Itinerante STA (2SG Maicon substituído pela CB Marla no GAP)
-    af("INSPECAO_NAVAL", "STA", "Inspeção Naval – Longa Duração", "Comissão de Inspeção Naval — Atalaia do Norte / Rio Javari", 2, 9, ["m20", "m21", "m48"], "CONFIRMADO", {
-      local: "Atalaia do Norte / Rio Javari",
-      militarSubstitutoId: "m55", // CB Marla cobrindo 2SG Maicon no GAP (CF-07)
-      documentoReferencia: "OS STA / Termo de Viagem",
-    }),
-    // 7. Férias Regulamentares (CB Acioly substituído pelo 3SG Jonas Messias)
-    af("FERIAS", "PESSOAL", "Férias – 1º período", "Férias Regulamentares — CB-MR Acioly (Subst. por 3ºSG-MR Jonas)", -4, 25, ["m46"], "CONFIRMADO", {
-      militarSubstitutoId: "m24",
-      documentoReferencia: "Plano Anual de Férias CFT",
-    }),
-    // 8. Faina Temporária de Apoio ao EPM (09:00 às 09:40 – FAXINA NO EPM)
-    af("OUTRO", "EPM", "FAXINA NO EPM", "09:00 às 09:40 – FAXINA NO EPM (Apoio de Manutenção)", 0, 0, ["m19"], "CONFIRMADO", {
-      local: "Divisão EPM (CF-10)",
-      impactaEscala: false,
-      horarioEspecifico: { t1: "07:30", t2: "09:00–09:40", t3: "13:15", t4: "16:30" },
-    }),
-    // 9. Período de Instalação (Recém-embarcado)
-    af("DISPENSA", "PESSOAL", "INSTALAÇÃO (Recém-embarcado)", "Período de Instalação — 3ºSG-MO Marinho (OI 30-09B)", -2, 5, ["m40"], "CONFIRMADO", {
-      militarSubstitutoId: "m30",
-      documentoReferencia: "OI 30-09B",
-    }),
-    // 10. Previsões próximas de Férias e Missões
-    af("MISSAO", "STA", "Itinerância STA", "Itinerância STA – Santo Antônio do Içá", 6, 13, ["m17", "m26", "m36"], "PREVISTO", {
-      local: "Santo Antônio do Içá/AM",
-      militarSubstitutoId: "m21",
-    }),
-    af("FERIAS", "PESSOAL", "Férias – 1º período", "Férias Regulamentares — 3ºSG-SQ Cleber João", 12, 41, ["m36"], "PREVISTO", {
-      militarSubstitutoId: "m28",
-    }),
-    af("FERIAS", "PESSOAL", "Férias – 1º período", "Férias Regulamentares — CB-MO Emanoel", 20, 49, ["m47"], "PREVISTO", {
-      militarSubstitutoId: "m35",
-    }),
-    // 11. Cumprimento do PREPOM/2026 em Amaturá/AM (MSG SO Júnior – CF-10)
-    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 1ºSG-CN Bruno Rubem", 7, 22, ["m16"], "CONFIRMADO", {
-      local: "Amaturá - AM",
-      militarSubstitutoId: "m27", // 3ºSG Cousaquiviti cobrindo SECOM (CF-09)
-      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
-    }),
-    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 3ºSG-SQ João Cleber", 13, 22, ["m36"], "CONFIRMADO", {
-      local: "Amaturá - AM",
-      militarSubstitutoId: "m42", // 3ºSG Geraldo cobrindo Salvatagem STA (CF-22)
-      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
-    }),
-    af("CURSO", "EPM", "PREPOM/2026 – Amaturá/AM", "Ministrar aula PREPOM/2026 em Amaturá-AM — 3ºSG-MO João Marcos", 7, 11, ["m35"], "CONFIRMADO", {
-      local: "Amaturá - AM",
-      militarSubstitutoId: "m39", // 3ºSG Everton cobrindo Depósito de Combustível (CF-40)
-      documentoReferencia: "MSG SO Júnior (CF-10) / PREPOM-2026",
-    }),
-  ];
+  // ─────────────────────────────────────────────────────────────────────────
+  // AFASTAMENTOS REAIS DE 2026/2027 (Detalhe NOV1 + FÉRIAS 2027 - GERAL.ods)
+  // ─────────────────────────────────────────────────────────────────────────
+  const afastamentos: Afastamento[] = dados2026.afastamentos;
 
   // ─────────────────────────────────────────────────────────────────────────
   // ESCALAS DE SERVIÇO (8 Postos Oficiais OI 02-06D + SOMOR)
@@ -990,18 +958,13 @@ export function criarSeed(hoje: string = hojeISO()): Database {
   // EVENTOS INSTITUCIONAIS
   // ─────────────────────────────────────────────────────────────────────────
   const eventos: EventoInstitucional[] = [
-    { id: "ev1", tipo: "CONSELHO_GESTAO", titulo: "Conselho de Gestão (CF-06) – Reunião Ordinária", inicio: T(-9), fim: T(-9), exigeConselho: true },
-    { id: "ev2", tipo: "CONSELHO_GESTAO", titulo: "Conselho de Gestão (CF-06) – Reunião Ordinária", inicio: T(21), fim: T(21), exigeConselho: true },
-    { id: "ev3", tipo: "CONSELHO_GESTAO", titulo: "Conselho de Gestão (CF-06) – Reunião Ordinária", inicio: T(51), fim: T(51), exigeConselho: true },
-    { id: "ev4", tipo: "INSPECAO_ADMINISTRATIVA", titulo: "Inspeção Administrativo-Militar (IAM - Com9ºDN)", inicio: T(65), fim: T(67), exigeConselho: true },
-    { id: "ev5", tipo: "CERIMONIA", titulo: "Operação BRACOLPER (OI 30-16)", inicio: T(35), fim: T(42), exigeConselho: false },
     { id: "ev6", tipo: "CERIMONIA", titulo: "Dia do Marinheiro", inicio: `${ano}-12-13`, fim: `${ano}-12-13`, exigeConselho: false },
     { id: "ev7", tipo: "CERIMONIA", titulo: "Aniversário da Capitania Fluvial de Tabatinga", inicio: `${ano}-09-17`, fim: `${ano}-09-17`, exigeConselho: false },
   ];
 
   return {
     version: DB_VERSION,
-    militares,
+    militares: militaresReais2026,
     afastamentos,
     escalas,
     eventos,
@@ -1011,22 +974,9 @@ export function criarSeed(hoje: string = hojeISO()): Database {
       considerarPrevistos: true,
       regressoGeralAtivo: false,
       regressoGeralTexto: "REGRESSO GERAL 07:00 ATÉ SEXTA-FEIRA",
+      dataBaseEscalas: dados2026.geradoEm,
     },
-    trocasServico: [
-      {
-        id: "tr-001",
-        numeroSequencial: "014/2026",
-        dataServicoOriginal: T(3),
-        posto: "CONTRAMESTRE",
-        militarSolicitanteId: "m29", // 3SG Barbosa
-        militarSubstitutoId: "m32", // 3SG Teixeira
-        nivelHierarquia: 2,
-        dataSolicitacao: hoje,
-        cumpreAntecedencia48h: true,
-        motivoJustificativa: "Apoio na abertura de turma CFAQ-MFM no EPM (Anexo O - OI 02-06D)",
-        statusAprovacaoAjudante: "AUTORIZADO_CF02",
-      },
-    ],
+    trocasServico: [],
     updatedAt: agora,
   };
 }
