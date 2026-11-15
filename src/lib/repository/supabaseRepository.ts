@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { criarSeed, DB_VERSION } from "../seed";
+import dados2026Raw from "../dados2026.json";
 import type {
   Afastamento,
   CollectionItem,
@@ -248,7 +249,15 @@ export class SupabaseRepository implements DataRepository {
   async replaceAll(db: Database): Promise<void> {
     const now = new Date().toISOString();
 
-    // 1. Militares: Upsert de cada militar por NIP (sem drop da tabela compartilhada!)
+    // 1. Militares: Desativa NIPs removidos da base atual e faz Upsert dos 59 ativos por NIP
+    const nipsRemover = (dados2026Raw as { nipsRemover?: string[] }).nipsRemover ?? [];
+    if (nipsRemover.length > 0) {
+      await this.client
+        .from(TABELA_MILITARES)
+        .update({ excluido_em: now, ativo: 0, situacao: "DESEMBARCADO", atualizado_em: now })
+        .in("nip", nipsRemover);
+    }
+
     for (const m of db.militares ?? []) {
       const linha = militarParaLinha(m);
       const { error } = await this.client
